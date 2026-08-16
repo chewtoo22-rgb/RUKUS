@@ -13,7 +13,7 @@ class ProjectMaterializer(private val workspaceRoot: File) {
             val target = File(projectDir, generated.path)
             require(target.canonicalPath.startsWith(projectDir.canonicalPath))
             target.parentFile?.mkdirs()
-            if (!target.exists()) target.writeText(generated.seedContent)
+            target.writeText(generated.content)
         }
 
         return BuildJob(
