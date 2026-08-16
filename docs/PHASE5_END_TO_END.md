@@ -27,3 +27,7 @@ A successful MUTINY build creates a handoff object. RUKUS converts that handoff 
 - materialized files remain path-confined
 - worker availability is explicit
 - unavailable worker paths fail closed
+
+## Actions proof trigger
+
+This documentation touch intentionally retriggers the Phase 5 push workflow so the current head is assembled by GitHub Actions.
