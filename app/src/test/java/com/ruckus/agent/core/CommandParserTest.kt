@@ -37,4 +37,14 @@ class CommandParserTest {
   assertEquals(1,plan.actions.size)
   assertEquals(listOf("make coffee"),plan.rejectedParts)
  }
+ @Test fun semanticFailuresGetOneSafeRetry(){
+  val decision=RecoveryPolicy.decide(AgentAction.TapLabel("Allow"),"not found")
+  assertTrue(decision.retry)
+  assertTrue(decision.inspectFirst)
+  assertEquals(1,decision.maxAttempts)
+ }
+ @Test fun privilegedFailuresNeverAutoRetry(){
+  val decision=RecoveryPolicy.decide(AgentAction.RunApprovedShell("demo"),"failed")
+  assertFalse(decision.retry)
+ }
 }
