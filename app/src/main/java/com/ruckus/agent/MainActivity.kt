@@ -18,22 +18,46 @@ import com.ruckus.agent.control.RuckusAccessibilityService
 import com.ruckus.agent.control.ShizukuStateReader
 import com.ruckus.agent.core.RuckusExecutor
 import com.ruckus.agent.personality.RuckusPersona
+import rikka.shizuku.Shizuku
 
 class MainActivity:ComponentActivity(){
- override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);val executor=RuckusExecutor(this);setContent{MaterialTheme(colorScheme=darkColorScheme()){Surface(Modifier.fillMaxSize(),color=Color(0xFF090909)){Dashboard(executor,{startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))},{startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,Uri.parse("package:$packageName")))})}}}}
+ override fun onCreate(savedInstanceState:Bundle?){
+  super.onCreate(savedInstanceState)
+  val executor=RuckusExecutor(this)
+  setContent{MaterialTheme(colorScheme=darkColorScheme()){Surface(Modifier.fillMaxSize(),color=Color(0xFF090909)){Dashboard(executor,{startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))},{startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,Uri.parse("package:$packageName")))})}}}
+ }
 }
 
 @Composable private fun Dashboard(executor:RuckusExecutor,onAccessibility:()->Unit,onWriteSettings:()->Unit){
- var command by remember{mutableStateOf("")};var result by remember{mutableStateOf("Ready. Try: home, back, volume 30, brightness 50, tap <label>, type <text>")}
- val shizuku=runCatching{ShizukuStateReader.read()}.getOrNull()
+ var command by remember{mutableStateOf("")}
+ var result by remember{mutableStateOf("Ready. Try: open Spotify, scroll down, inspect screen, tap Allow, volume 30")}
+ var refresh by remember{mutableIntStateOf(0)}
+ val shizuku=remember(refresh){runCatching{ShizukuStateReader.read()}.getOrNull()}
+ fun execute(text:String){command=text;val report=executor.run(text);result=if(report.ok)"✓ ${report.message}" else if(report.needsConfirmation)"CONFIRM: ${report.message}" else "✕ ${report.message}"}
+
  Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
   Text(RuckusPersona.NAME,style=MaterialTheme.typography.displayMedium);Text(RuckusPersona.TAGLINE);HorizontalDivider()
   StatusCard("CONTROL SERVICE",if(RuckusAccessibilityService.instance!=null)"ONLINE" else "OFFLINE — enable Accessibility")
   StatusCard("SHIZUKU",when{shizuku?.permissionGranted==true->"CONNECTED + GRANTED";shizuku?.binderAvailable==true->"CONNECTED — permission needed";else->"OFFLINE"})
+
   OutlinedTextField(command,{command=it},Modifier.fillMaxWidth(),label={Text("Tell RUKUS what to do")},singleLine=true)
-  Button(onClick={val report=executor.run(command);result=if(report.ok)"✓ ${report.message}" else if(report.needsConfirmation)"CONFIRM: ${report.message}" else "✕ ${report.message}"},modifier=Modifier.fillMaxWidth(),enabled=command.isNotBlank()){Text("EXECUTE")}
+  Button(onClick={execute(command)},modifier=Modifier.fillMaxWidth(),enabled=command.isNotBlank()){Text("EXECUTE")}
+
+  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+   AssistChip(onClick={execute("inspect screen")},label={Text("Inspect")})
+   AssistChip(onClick={execute("scroll down")},label={Text("Scroll ↓")})
+   AssistChip(onClick={execute("home")},label={Text("Home")})
+  }
   Text(result,style=MaterialTheme.typography.bodyMedium)
-  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton(onAccessibility,Modifier.weight(1f)){Text("Accessibility")};OutlinedButton(onWriteSettings,Modifier.weight(1f)){Text("Settings")}}
+
+  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+   OutlinedButton(onAccessibility,Modifier.weight(1f)){Text("Accessibility")}
+   OutlinedButton(onWriteSettings,Modifier.weight(1f)){Text("Settings")}
+  }
+  if(shizuku?.binderAvailable==true && shizuku.permissionGranted.not()){
+   OutlinedButton(onClick={runCatching{Shizuku.requestPermission(1001)};refresh++},modifier=Modifier.fillMaxWidth()){Text("Grant Shizuku")}
+  }
+  TextButton(onClick={refresh++},modifier=Modifier.fillMaxWidth()){Text("Refresh status")}
  }
 }
 @Composable private fun StatusCard(title:String,detail:String){Card(Modifier.fillMaxWidth()){Column(Modifier.padding(14.dp)){Text(title,style=MaterialTheme.typography.titleMedium);Text(detail)}}}
