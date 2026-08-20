@@ -24,4 +24,17 @@ class CommandParserTest {
   assertEquals(Risk.SAFE,SafetyGate.classify(AgentAction.InspectScreen).risk)
   assertEquals(Risk.SAFE,SafetyGate.classify(AgentAction.OpenAppByName("Spotify")).risk)
  }
+ @Test fun plannerBuildsDeterministicSequences(){
+  val plan=CommandPlanner.plan("open Spotify then volume 35 then scroll down")
+  assertEquals(3,plan.actions.size)
+  assertTrue(plan.rejectedParts.isEmpty())
+  assertTrue(plan.actions[0] is AgentAction.OpenAppByName)
+  assertTrue(plan.actions[1] is AgentAction.SetMediaVolume)
+  assertTrue(plan.actions[2] is AgentAction.Scroll)
+ }
+ @Test fun plannerReportsUnknownSegments(){
+  val plan=CommandPlanner.plan("home then make coffee")
+  assertEquals(1,plan.actions.size)
+  assertEquals(listOf("make coffee"),plan.rejectedParts)
+ }
 }
