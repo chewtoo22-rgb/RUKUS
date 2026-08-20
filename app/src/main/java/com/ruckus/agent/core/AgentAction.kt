@@ -5,6 +5,7 @@ sealed interface AgentAction {
     data object Back : AgentAction
     data object Home : AgentAction
     data class Tap(val x: Float, val y: Float) : AgentAction
+    data class TapLabel(val label: String) : AgentAction
     data class Swipe(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val durationMs: Long = 350) : AgentAction
     data class TypeText(val text: String) : AgentAction
     data class SetBrightness(val percent: Int) : AgentAction
