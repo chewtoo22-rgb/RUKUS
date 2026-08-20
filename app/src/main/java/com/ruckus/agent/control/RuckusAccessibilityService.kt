@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.view.accessibility.AccessibilityEvent
+import com.ruckus.agent.core.AgentAction
 
 class RuckusAccessibilityService : AccessibilityService() {
     companion object { @Volatile var instance: RuckusAccessibilityService? = null }
@@ -16,6 +17,14 @@ class RuckusAccessibilityService : AccessibilityService() {
     fun snapshot(): List<UiNodeSnapshot> = AccessibilitySelectors.flatten(rootInActiveWindow)
     fun clickLabel(label: String): Boolean = AccessibilitySelectors.clickByLabel(rootInActiveWindow, label)
     fun typeFocused(text: String): Boolean = AccessibilitySelectors.typeIntoFocused(rootInActiveWindow, text)
+
+    fun scroll(direction: AgentAction.Direction): Boolean {
+        val dm = resources.displayMetrics
+        val x = dm.widthPixels * 0.5f
+        val top = dm.heightPixels * 0.28f
+        val bottom = dm.heightPixels * 0.78f
+        return if(direction==AgentAction.Direction.DOWN) swipe(x,bottom,x,top,350) else swipe(x,top,x,bottom,350)
+    }
 
     fun tap(x: Float, y: Float): Boolean {
         val p = Path().apply { moveTo(x, y) }
