@@ -68,6 +68,16 @@ class CommandParserTest {
   val plan=AdaptiveRecoveryPlanner.replan(AgentAction.RunApprovedShell("demo"),"pkg=x","failed")
   assertNull(plan.alternate)
  }
+ @Test fun recoveryEquivalenceAllowsIntentPreservingAlternates(){
+  assertTrue(RecoveryEquivalence.canSubstitute(AgentAction.TapLabel("Continue"),AgentAction.TapLabel("Contnue"),.80f))
+  assertTrue(RecoveryEquivalence.canSubstitute(AgentAction.Scroll(AgentAction.Direction.DOWN),AgentAction.Swipe(500f,1500f,500f,500f,400),.80f))
+  assertTrue(RecoveryEquivalence.canSubstitute(AgentAction.Swipe(500f,500f,500f,1500f,400),AgentAction.Scroll(AgentAction.Direction.UP),.76f))
+ }
+ @Test fun recoveryEquivalenceRejectsSafeButDifferentIntent(){
+  assertFalse(RecoveryEquivalence.canSubstitute(AgentAction.Back,AgentAction.Home,.99f))
+  assertFalse(RecoveryEquivalence.canSubstitute(AgentAction.TapLabel("Pay"),AgentAction.TapLabel("Cancel"),.60f))
+  assertFalse(RecoveryEquivalence.canSubstitute(AgentAction.Scroll(AgentAction.Direction.DOWN),AgentAction.Swipe(500f,500f,500f,1500f,400),.90f))
+ }
  @Test fun resumeStartsAtFirstUnverifiedCheckpoint(){
   val request="home then scroll down then volume 25"
   val plan=CommandPlanner.plan(request)
