@@ -8,7 +8,7 @@ object ActionVerifier {
             AgentAction.Home, AgentAction.Back,
             is AgentAction.OpenApp, is AgentAction.OpenAppByName,
             is AgentAction.Tap, is AgentAction.TapLabel,
-            is AgentAction.Scroll -> {
+            is AgentAction.Swipe, is AgentAction.Scroll -> {
                 if(before != null && after != null && before != after) VerificationResult(true,"Visible UI changed")
                 else if(result != null) VerificationResult(true,"Action adapter reported success")
                 else VerificationResult(false,"No visible UI change or success result")
