@@ -102,4 +102,13 @@ class CommandParserTest {
   assertFalse(ResumePolicy.decide(failed,plan).allowed)
   assertFalse(ResumePolicy.decide(changed,plan).allowed)
  }
+ @Test fun recoveryBudgetAllowsOnlyBoundedAutonomousAttempts(){
+  assertTrue(RecoveryBudget.decide(0).allowed)
+  assertTrue(RecoveryBudget.decide(RecoveryBudget.MAX_TOTAL_ATTEMPTS-1).allowed)
+  assertFalse(RecoveryBudget.decide(RecoveryBudget.MAX_TOTAL_ATTEMPTS).allowed)
+  assertFalse(RecoveryBudget.decide(RecoveryBudget.MAX_TOTAL_ATTEMPTS+1).allowed)
+ }
+ @Test fun recoveryBudgetRejectsCorruptNegativeCount(){
+  assertFalse(RecoveryBudget.decide(-1).allowed)
+ }
 }
