@@ -108,7 +108,24 @@ class CommandParserTest {
   assertFalse(RecoveryBudget.decide(RecoveryBudget.MAX_TOTAL_ATTEMPTS).allowed)
   assertFalse(RecoveryBudget.decide(RecoveryBudget.MAX_TOTAL_ATTEMPTS+1).allowed)
  }
- @Test fun recoveryBudgetRejectsCorruptNegativeCount(){
-  assertFalse(RecoveryBudget.decide(-1).allowed)
+ @Test fun recoveryBudgetRejectsCorruptNegativeCount(){ assertFalse(RecoveryBudget.decide(-1).allowed) }
+ @Test fun completionGateRequiresEveryStepVerified(){
+  val plan=CommandPlanner.plan("home then scroll down")
+  assertFalse(TaskCompletionGate.evaluate(plan,1,"pkg=launcher | labels=Home").ok)
+ }
+ @Test fun completionGateRequiresRequestedPackageToRemainForeground(){
+  val plan=CommandPlanner.Plan(listOf(AgentAction.OpenApp("com.spotify.music")), emptyList())
+  assertTrue(TaskCompletionGate.evaluate(plan,1,"pkg=com.spotify.music | labels=Spotify").ok)
+  assertFalse(TaskCompletionGate.evaluate(plan,1,"pkg=com.android.settings | labels=Settings").ok)
+ }
+ @Test fun completionGateRequiresTerminalTypedTextEvidence(){
+  val plan=CommandPlanner.Plan(listOf(AgentAction.TypeText("hello")), emptyList())
+  assertTrue(TaskCompletionGate.evaluate(plan,1,"pkg=x | labels=hello").ok)
+  assertFalse(TaskCompletionGate.evaluate(plan,1,"pkg=x | labels=other").ok)
+ }
+ @Test fun completionGateRequiresObservableUiCheckpointForNavigation(){
+  val plan=CommandPlanner.Plan(listOf(AgentAction.Home), emptyList())
+  assertTrue(TaskCompletionGate.evaluate(plan,1,"pkg=launcher | labels=Home").ok)
+  assertFalse(TaskCompletionGate.evaluate(plan,1,null).ok)
  }
 }
