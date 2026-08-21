@@ -75,8 +75,8 @@ class CommandParserTest {
   val resume=ResumePolicy.decide(session,plan)
   assertTrue(resume.allowed); assertEquals(1,resume.startStep)
  }
- @Test fun resumeKeepsConfirmationGateAtCurrentStep(){
-  val request="home then shell demo"
+ @Test fun waitingSessionResumesAtCurrentCheckpoint(){
+  val request="home then volume 25"
   val plan=CommandPlanner.plan(request)
   val session=PersistedTaskSession(request,1,2,"Home","pkg=launcher",0,AgentTaskState.Status.WAITING_CONFIRMATION,123L)
   val resume=ResumePolicy.decide(session,plan)
