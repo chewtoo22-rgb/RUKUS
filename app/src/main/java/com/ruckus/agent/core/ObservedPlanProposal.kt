@@ -40,6 +40,10 @@ data class ObservedPlanProposal(
             val admittedActions = actions.toList()
             val admission = PlanAdmissionPolicy.evaluate(admittedActions)
             if (!admission.allowed) return Result.failure(IllegalArgumentException(admission.reason))
+            val reasoningAdmission = ReasoningPlanPolicy.evaluate(admittedActions)
+            if (!reasoningAdmission.allowed) {
+                return Result.failure(IllegalArgumentException(reasoningAdmission.reason))
+            }
             val plan = CommandPlanner.Plan(admittedActions, emptyList())
             val observationFingerprint = fingerprint(normalizedObservation)
             val planFingerprint = PlanFingerprint.of(plan)
@@ -120,6 +124,10 @@ object ObservedPlanFreshnessGate {
         val admission = PlanAdmissionPolicy.evaluate(proposal.actions)
         if (!admission.allowed) {
             return Decision(false, "Proposed plan no longer passes admission: ${admission.reason}")
+        }
+        val reasoningAdmission = ReasoningPlanPolicy.evaluate(proposal.actions)
+        if (!reasoningAdmission.allowed) {
+            return Decision(false, "Proposed plan no longer passes reasoning admission: ${reasoningAdmission.reason}")
         }
         val currentPlanFingerprint = PlanFingerprint.of(CommandPlanner.Plan(proposal.actions, emptyList()))
         if (currentPlanFingerprint != proposal.planFingerprint) {
