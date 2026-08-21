@@ -17,36 +17,25 @@ class CommandParserTest {
   assertNull(CommandParser.parse("volume 101").action)
   assertNull(CommandParser.parse("do whatever you want").action)
  }
- @Test fun privilegedActionsRequireConfirmation(){
-  assertEquals(Risk.CONFIRM,SafetyGate.classify(AgentAction.RunApprovedShell("demo")).risk)
- }
+ @Test fun privilegedActionsRequireConfirmation(){ assertEquals(Risk.CONFIRM,SafetyGate.classify(AgentAction.RunApprovedShell("demo")).risk) }
  @Test fun inspectionAndNavigationAreSafe(){
   assertEquals(Risk.SAFE,SafetyGate.classify(AgentAction.InspectScreen).risk)
   assertEquals(Risk.SAFE,SafetyGate.classify(AgentAction.OpenAppByName("Spotify")).risk)
  }
  @Test fun plannerBuildsDeterministicSequences(){
   val plan=CommandPlanner.plan("open Spotify then volume 35 then scroll down")
-  assertEquals(3,plan.actions.size)
-  assertTrue(plan.rejectedParts.isEmpty())
-  assertTrue(plan.actions[0] is AgentAction.OpenAppByName)
-  assertTrue(plan.actions[1] is AgentAction.SetMediaVolume)
-  assertTrue(plan.actions[2] is AgentAction.Scroll)
+  assertEquals(3,plan.actions.size); assertTrue(plan.rejectedParts.isEmpty())
+  assertTrue(plan.actions[0] is AgentAction.OpenAppByName); assertTrue(plan.actions[1] is AgentAction.SetMediaVolume); assertTrue(plan.actions[2] is AgentAction.Scroll)
  }
  @Test fun plannerReportsUnknownSegments(){
   val plan=CommandPlanner.plan("home then make coffee")
-  assertEquals(1,plan.actions.size)
-  assertEquals(listOf("make coffee"),plan.rejectedParts)
+  assertEquals(1,plan.actions.size); assertEquals(listOf("make coffee"),plan.rejectedParts)
  }
  @Test fun semanticFailuresGetOneSafeRetry(){
   val decision=RecoveryPolicy.decide(AgentAction.TapLabel("Allow"),"not found")
-  assertTrue(decision.retry)
-  assertTrue(decision.inspectFirst)
-  assertEquals(1,decision.maxAttempts)
+  assertTrue(decision.retry); assertTrue(decision.inspectFirst); assertEquals(1,decision.maxAttempts)
  }
- @Test fun privilegedFailuresNeverAutoRetry(){
-  val decision=RecoveryPolicy.decide(AgentAction.RunApprovedShell("demo"),"failed")
-  assertFalse(decision.retry)
- }
+ @Test fun privilegedFailuresNeverAutoRetry(){ assertFalse(RecoveryPolicy.decide(AgentAction.RunApprovedShell("demo"),"failed").retry) }
  @Test fun exactPackageLaunchRequiresForegroundPackage(){
   val ok=ActionVerifier.verify(AgentAction.OpenApp("com.spotify.music"),"pkg=launcher","pkg=com.spotify.music | Home","Opened package=com.spotify.music")
   val bad=ActionVerifier.verify(AgentAction.OpenApp("com.spotify.music"),"pkg=launcher","pkg=com.android.settings | Settings","Opened package=com.spotify.music")
@@ -59,5 +48,24 @@ class CommandParserTest {
  @Test fun typedTextMustBeObservedOrChangeUi(){
   assertTrue(ActionVerifier.verify(AgentAction.TypeText("hello"),"pkg=x | old","pkg=x | hello","Typed text").ok)
   assertFalse(ActionVerifier.verify(AgentAction.TypeText("hello"),"pkg=x | same","pkg=x | same",null).ok)
+ }
+ @Test fun adaptiveTapChoosesUniqueCloseVisibleLabel(){
+  val plan=AdaptiveRecoveryPlanner.replan(AgentAction.TapLabel("Continue"),"pkg=x | labels=Contnue • Cancel • Settings","not found")
+  assertTrue(plan.alternate is AgentAction.TapLabel)
+  assertEquals("Contnue",(plan.alternate as AgentAction.TapLabel).label)
+  assertTrue(plan.confidence >= .72f)
+ }
+ @Test fun adaptiveTapRefusesAmbiguousGuess(){
+  val plan=AdaptiveRecoveryPlanner.replan(AgentAction.TapLabel("Pay"),"pkg=x | labels=Pay now • Pay later • Cancel","not found")
+  assertNull(plan.alternate)
+ }
+ @Test fun adaptiveScrollUsesBoundedGestureFallback(){
+  val plan=AdaptiveRecoveryPlanner.replan(AgentAction.Scroll(AgentAction.Direction.DOWN),"pkg=x | labels=A • B","verification failed")
+  assertTrue(plan.alternate is AgentAction.Swipe)
+  assertEquals(Risk.SAFE,SafetyGate.classify(plan.alternate!!).risk)
+ }
+ @Test fun adaptiveRecoveryNeverInventsPrivilegedFallback(){
+  val plan=AdaptiveRecoveryPlanner.replan(AgentAction.RunApprovedShell("demo"),"pkg=x","failed")
+  assertNull(plan.alternate)
  }
 }
