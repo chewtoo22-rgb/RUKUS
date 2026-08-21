@@ -9,7 +9,7 @@ data class AgentTaskState(
     val recoveryAttempts: Int,
     val status: Status
 ) {
-    enum class Status { IDLE, RUNNING, RECOVERING, WAITING_CONFIRMATION, FAILED, COMPLETE }
+    enum class Status { IDLE, RUNNING, EXECUTING, RECOVERING, WAITING_CONFIRMATION, FAILED, COMPLETE }
 }
 
 object AgentTaskStateStore {
