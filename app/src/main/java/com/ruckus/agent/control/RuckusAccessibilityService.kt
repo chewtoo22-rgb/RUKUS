@@ -15,6 +15,7 @@ class RuckusAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     fun snapshot(): List<UiNodeSnapshot> = AccessibilitySelectors.flatten(rootInActiveWindow)
+    fun activePackage(): String? = rootInActiveWindow?.packageName?.toString()
     fun clickLabel(label: String): Boolean = AccessibilitySelectors.clickByLabel(rootInActiveWindow, label)
     fun typeFocused(text: String): Boolean = AccessibilitySelectors.typeIntoFocused(rootInActiveWindow, text)
 
