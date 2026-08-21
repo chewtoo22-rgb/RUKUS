@@ -14,7 +14,7 @@ class DeviceController(private val context: Context) {
                 val intent = context.packageManager.getLaunchIntentForPackage(action.packageName)
                     ?: error("Package is not launchable: ${action.packageName}")
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent); "Opened ${action.packageName}"
+                context.startActivity(intent); "Opened package=${action.packageName}"
             }
             is AgentAction.OpenAppByName -> {
                 val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -25,9 +25,10 @@ class DeviceController(private val context: Context) {
                         .map { it to it.loadLabel(context.packageManager).toString() }
                         .firstOrNull { (_, label) -> label.contains(action.appName, true) }
                     ?: error("App not found: ${action.appName}")
-                val launch = context.packageManager.getLaunchIntentForPackage(match.first.activityInfo.packageName)
+                val pkg=match.first.activityInfo.packageName
+                val launch = context.packageManager.getLaunchIntentForPackage(pkg)
                     ?: error("App is not launchable: ${match.second}")
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(launch); "Opened ${match.second}"
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(launch); "Opened ${match.second} package=$pkg"
             }
             AgentAction.Back -> { checkNotNull(RuckusAccessibilityService.instance).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK); "Back" }
             AgentAction.Home -> { checkNotNull(RuckusAccessibilityService.instance).performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME); "Home" }
@@ -36,11 +37,7 @@ class DeviceController(private val context: Context) {
             is AgentAction.Swipe -> { check(RuckusAccessibilityService.instance?.swipe(action.x1, action.y1, action.x2, action.y2, action.durationMs) == true); "Swiped" }
             is AgentAction.Scroll -> { check(RuckusAccessibilityService.instance?.scroll(action.direction) == true); "Scrolled ${action.direction.name.lowercase()}" }
             is AgentAction.TypeText -> { check(RuckusAccessibilityService.instance?.typeFocused(action.text) == true) { "No editable focused field" }; "Typed text" }
-            AgentAction.InspectScreen -> {
-                val nodes = checkNotNull(RuckusAccessibilityService.instance) { "Accessibility service offline" }.snapshot()
-                val labels = nodes.asSequence().flatMap { sequenceOf(it.text, it.contentDescription) }.filterNotNull().map { it.trim() }.filter { it.isNotBlank() }.distinct().take(12).toList()
-                if(labels.isEmpty()) "No readable labels on screen" else labels.joinToString(" • ")
-            }
+            AgentAction.InspectScreen -> inspectScreen()
             is AgentAction.SetBrightness -> {
                 require(action.percent in 0..100); check(Settings.System.canWrite(context)) { "WRITE_SETTINGS not granted" }
                 Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, (action.percent * 255 / 100).coerceIn(1,255)); "Brightness ${action.percent}%"
@@ -52,5 +49,15 @@ class DeviceController(private val context: Context) {
             }
             is AgentAction.RunApprovedShell -> error("Bounded Shizuku adapter not enabled yet")
         }
+    }
+
+    private fun inspectScreen(): String {
+        val service=checkNotNull(RuckusAccessibilityService.instance) { "Accessibility service offline" }
+        val pkg=service.activePackage() ?: "unknown"
+        val labels=service.snapshot().asSequence()
+            .flatMap { sequenceOf(it.text,it.contentDescription) }
+            .filterNotNull().map { it.trim() }.filter { it.isNotBlank() }
+            .distinct().take(12).toList()
+        return "pkg=$pkg | ${if(labels.isEmpty()) "No readable labels" else labels.joinToString(" • ")}" 
     }
 }
