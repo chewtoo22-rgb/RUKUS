@@ -7,36 +7,57 @@ import java.security.MessageDigest
  *
  * A future reasoning planner may propose typed AgentActions, but those actions must not be
  * executed against a different screen than the one the planner inspected. This gate gives the
- * inspect -> plan boundary deterministic freshness and proposal-integrity checks before execution.
+ * inspect -> plan boundary deterministic freshness, proposal-integrity, and short-lived lease
+ * checks before execution.
  */
 data class ObservedPlanProposal(
     val goal: String,
     val actions: List<AgentAction>,
     val observationFingerprint: String,
     val planFingerprint: String,
+    val issuedAtEpochMs: Long,
+    val proposalFingerprint: String,
 ) {
     companion object {
         const val MAX_GOAL_LENGTH = 500
+        const val MAX_PROPOSAL_AGE_MS = 10_000L
 
-        fun create(goal: String, actions: List<AgentAction>, observation: String?): Result<ObservedPlanProposal> {
+        fun create(
+            goal: String,
+            actions: List<AgentAction>,
+            observation: String?,
+            nowEpochMs: Long = System.currentTimeMillis(),
+        ): Result<ObservedPlanProposal> {
             val cleanGoal = goal.trim()
             if (cleanGoal.isEmpty()) return Result.failure(IllegalArgumentException("Goal is blank"))
             if (cleanGoal.length > MAX_GOAL_LENGTH) {
                 return Result.failure(IllegalArgumentException("Goal exceeds $MAX_GOAL_LENGTH characters"))
             }
+            if (nowEpochMs < 0L) return Result.failure(IllegalArgumentException("Proposal timestamp is invalid"))
+
             val normalizedObservation = normalizeObservation(observation)
                 ?: return Result.failure(IllegalArgumentException("Planner observation is missing or not package-aware"))
             val admittedActions = actions.toList()
             val admission = PlanAdmissionPolicy.evaluate(admittedActions)
             if (!admission.allowed) return Result.failure(IllegalArgumentException(admission.reason))
             val plan = CommandPlanner.Plan(admittedActions, emptyList())
+            val observationFingerprint = fingerprint(normalizedObservation)
+            val planFingerprint = PlanFingerprint.of(plan)
+            val proposalFingerprint = proposalFingerprint(
+                cleanGoal,
+                observationFingerprint,
+                planFingerprint,
+                nowEpochMs,
+            )
 
             return Result.success(
                 ObservedPlanProposal(
                     goal = cleanGoal,
                     actions = admittedActions,
-                    observationFingerprint = fingerprint(normalizedObservation),
-                    planFingerprint = PlanFingerprint.of(plan),
+                    observationFingerprint = observationFingerprint,
+                    planFingerprint = planFingerprint,
+                    issuedAtEpochMs = nowEpochMs,
+                    proposalFingerprint = proposalFingerprint,
                 )
             )
         }
@@ -47,17 +68,48 @@ data class ObservedPlanProposal(
             return value
         }
 
-        internal fun fingerprint(observation: String): String {
-            val digest = MessageDigest.getInstance("SHA-256").digest(observation.toByteArray(Charsets.UTF_8))
+        internal fun fingerprint(value: String): String {
+            val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
             return digest.joinToString("") { "%02x".format(it) }
         }
+
+        internal fun proposalFingerprint(
+            goal: String,
+            observationFingerprint: String,
+            planFingerprint: String,
+            issuedAtEpochMs: Long,
+        ): String = fingerprint(
+            listOf(goal, observationFingerprint, planFingerprint, issuedAtEpochMs.toString())
+                .joinToString("\u001f")
+        )
     }
 }
 
 object ObservedPlanFreshnessGate {
     data class Decision(val allowed: Boolean, val reason: String)
 
-    fun evaluate(proposal: ObservedPlanProposal, currentObservation: String?): Decision {
+    fun evaluate(
+        proposal: ObservedPlanProposal,
+        currentObservation: String?,
+        nowEpochMs: Long = System.currentTimeMillis(),
+    ): Decision {
+        if (nowEpochMs < proposal.issuedAtEpochMs) {
+            return Decision(false, "Planner proposal timestamp is in the future; discard and replan")
+        }
+        if (nowEpochMs - proposal.issuedAtEpochMs > ObservedPlanProposal.MAX_PROPOSAL_AGE_MS) {
+            return Decision(false, "Planner proposal lease expired; re-inspection and replanning required")
+        }
+
+        val expectedProposalFingerprint = ObservedPlanProposal.proposalFingerprint(
+            proposal.goal,
+            proposal.observationFingerprint,
+            proposal.planFingerprint,
+            proposal.issuedAtEpochMs,
+        )
+        if (expectedProposalFingerprint != proposal.proposalFingerprint) {
+            return Decision(false, "Planner proposal metadata changed after admission; discard and replan")
+        }
+
         val normalized = ObservedPlanProposal.normalizeObservation(currentObservation)
             ?: return Decision(false, "Current UI observation is missing or not package-aware")
         val currentFingerprint = ObservedPlanProposal.fingerprint(normalized)
@@ -74,6 +126,6 @@ object ObservedPlanFreshnessGate {
             return Decision(false, "Proposed actions changed after admission; discard and replan")
         }
 
-        return Decision(true, "Plan is intact and bound to the current UI observation")
+        return Decision(true, "Plan is intact, short-lived, and bound to the current UI observation")
     }
 }
