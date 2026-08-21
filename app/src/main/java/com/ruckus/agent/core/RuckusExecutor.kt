@@ -39,33 +39,66 @@ class RuckusExecutor(context:Context){
                 return ExecutionReport(false,decision.reason,action,true,index,plan.actions.size,anyRecovery)
             }
 
-            var result=controller.execute(action)
+            var executedAction=action
+            var result=controller.execute(executedAction)
             if(result.isFailure) {
                 val firstError=result.exceptionOrNull()?.message ?: "Execution failed"
-                val recovery=RecoveryPolicy.decide(action,firstError)
+                val recovery=RecoveryPolicy.decide(executedAction,firstError)
                 if(recovery.retry) {
                     anyRecovery=true
                     val screen=if(recovery.inspectFirst) controller.execute(AgentAction.InspectScreen).getOrNull() else before
-                    setState(AgentTaskState(request,index,plan.actions.size,action,screen,1,AgentTaskState.Status.RECOVERING))
-                    ActionAudit.record(request,action,"RECOVERY: ${recovery.reason}")
-                    result=controller.execute(action)
+                    setState(AgentTaskState(request,index,plan.actions.size,executedAction,screen,1,AgentTaskState.Status.RECOVERING))
+                    ActionAudit.record(request,executedAction,"RECOVERY: ${recovery.reason}")
+                    result=controller.execute(executedAction)
+                }
+                if(result.isFailure) {
+                    val screen=controller.execute(AgentAction.InspectScreen).getOrNull()
+                    val adaptive=AdaptiveRecoveryPlanner.replan(executedAction,screen,firstError)
+                    if(adaptive.alternate!=null && SafetyGate.classify(adaptive.alternate).risk==Risk.SAFE) {
+                        anyRecovery=true
+                        executedAction=adaptive.alternate
+                        ActionAudit.record(request,executedAction,"REPLAN: ${adaptive.reason} confidence=${adaptive.confidence}")
+                        setState(AgentTaskState(request,index,plan.actions.size,executedAction,screen,1,AgentTaskState.Status.RECOVERING))
+                        result=controller.execute(executedAction)
+                    }
                 }
             }
 
             if(result.isFailure) {
                 val msg=result.exceptionOrNull()?.message ?: "Execution failed"
-                return terminalFailure(request,index,plan.actions.size,action,msg,anyRecovery)
+                return terminalFailure(request,index,plan.actions.size,executedAction,msg,anyRecovery)
             }
 
-            val after=controller.execute(AgentAction.InspectScreen).getOrNull()
-            val verify=ActionVerifier.verify(action,before,after,result.getOrNull())
+            var after=controller.execute(AgentAction.InspectScreen).getOrNull()
+            var verify=ActionVerifier.verify(executedAction,before,after,result.getOrNull())
             if(!verify.ok) {
-                ActionAudit.record(request,action,"VERIFY_FAILED: ${verify.reason}")
-                setState(AgentTaskState(request,index,plan.actions.size,action,after,if(anyRecovery)1 else 0,AgentTaskState.Status.FAILED))
-                return ExecutionReport(false,"Step ${index+1}/${plan.actions.size} could not be verified: ${verify.reason}",action,false,index,plan.actions.size,anyRecovery)
+                ActionAudit.record(request,executedAction,"VERIFY_FAILED: ${verify.reason}")
+                val adaptive=AdaptiveRecoveryPlanner.replan(executedAction,after,verify.reason)
+                if(adaptive.alternate!=null && SafetyGate.classify(adaptive.alternate).risk==Risk.SAFE) {
+                    anyRecovery=true
+                    executedAction=adaptive.alternate
+                    ActionAudit.record(request,executedAction,"VERIFY_REPLAN: ${adaptive.reason} confidence=${adaptive.confidence}")
+                    setState(AgentTaskState(request,index,plan.actions.size,executedAction,after,1,AgentTaskState.Status.RECOVERING))
+                    val alternateResult=controller.execute(executedAction)
+                    if(alternateResult.isSuccess) {
+                        val alternateAfter=controller.execute(AgentAction.InspectScreen).getOrNull()
+                        val alternateVerify=ActionVerifier.verify(executedAction,after,alternateAfter,alternateResult.getOrNull())
+                        if(alternateVerify.ok) {
+                            result=alternateResult
+                            after=alternateAfter
+                            verify=alternateVerify
+                        }
+                    }
+                }
             }
-            ActionAudit.record(request,action,"OK+VERIFIED: ${verify.reason}")
-            setState(AgentTaskState(request,index+1,plan.actions.size,action,after,if(anyRecovery)1 else 0,AgentTaskState.Status.RUNNING))
+
+            if(!verify.ok) {
+                setState(AgentTaskState(request,index,plan.actions.size,executedAction,after,if(anyRecovery)1 else 0,AgentTaskState.Status.FAILED))
+                return ExecutionReport(false,"Step ${index+1}/${plan.actions.size} could not be verified after safe replanning: ${verify.reason}",executedAction,false,index,plan.actions.size,anyRecovery)
+            }
+
+            ActionAudit.record(request,executedAction,"OK+VERIFIED: ${verify.reason}")
+            setState(AgentTaskState(request,index+1,plan.actions.size,executedAction,after,if(anyRecovery)1 else 0,AgentTaskState.Status.RUNNING))
         }
 
         val final=AgentTaskState(request,plan.actions.size,plan.actions.size,plan.actions.last(),AgentTaskStateStore.get().lastScreenSummary,0,AgentTaskState.Status.COMPLETE)
