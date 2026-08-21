@@ -47,4 +47,17 @@ class CommandParserTest {
   val decision=RecoveryPolicy.decide(AgentAction.RunApprovedShell("demo"),"failed")
   assertFalse(decision.retry)
  }
+ @Test fun exactPackageLaunchRequiresForegroundPackage(){
+  val ok=ActionVerifier.verify(AgentAction.OpenApp("com.spotify.music"),"pkg=launcher","pkg=com.spotify.music | Home","Opened package=com.spotify.music")
+  val bad=ActionVerifier.verify(AgentAction.OpenApp("com.spotify.music"),"pkg=launcher","pkg=com.android.settings | Settings","Opened package=com.spotify.music")
+  assertTrue(ok.ok); assertFalse(bad.ok)
+ }
+ @Test fun namedAppLaunchUsesResolvedPackage(){
+  val result="Opened Spotify package=com.spotify.music"
+  assertTrue(ActionVerifier.verify(AgentAction.OpenAppByName("Spotify"),"pkg=launcher","pkg=com.spotify.music | Spotify",result).ok)
+ }
+ @Test fun typedTextMustBeObservedOrChangeUi(){
+  assertTrue(ActionVerifier.verify(AgentAction.TypeText("hello"),"pkg=x | old","pkg=x | hello","Typed text").ok)
+  assertFalse(ActionVerifier.verify(AgentAction.TypeText("hello"),"pkg=x | same","pkg=x | same",null).ok)
+ }
 }
