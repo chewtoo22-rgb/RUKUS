@@ -68,4 +68,28 @@ class CommandParserTest {
   val plan=AdaptiveRecoveryPlanner.replan(AgentAction.RunApprovedShell("demo"),"pkg=x","failed")
   assertNull(plan.alternate)
  }
+ @Test fun resumeStartsAtFirstUnverifiedCheckpoint(){
+  val request="home then scroll down then volume 25"
+  val plan=CommandPlanner.plan(request)
+  val session=PersistedTaskSession(request,1,3,"Home","pkg=launcher",0,AgentTaskState.Status.RUNNING,123L)
+  val resume=ResumePolicy.decide(session,plan)
+  assertTrue(resume.allowed); assertEquals(1,resume.startStep)
+ }
+ @Test fun resumeKeepsConfirmationGateAtCurrentStep(){
+  val request="home then shell demo"
+  val plan=CommandPlanner.plan(request)
+  val session=PersistedTaskSession(request,1,2,"Home","pkg=launcher",0,AgentTaskState.Status.WAITING_CONFIRMATION,123L)
+  val resume=ResumePolicy.decide(session,plan)
+  assertTrue(resume.allowed); assertEquals(1,resume.startStep)
+ }
+ @Test fun resumeRejectsCompletedFailedAndChangedPlans(){
+  val request="home then scroll down"
+  val plan=CommandPlanner.plan(request)
+  val complete=PersistedTaskSession(request,2,2,"Scroll","pkg=x",0,AgentTaskState.Status.COMPLETE,123L)
+  val failed=complete.copy(currentStep=1,status=AgentTaskState.Status.FAILED)
+  val changed=complete.copy(currentStep=1,totalSteps=3,status=AgentTaskState.Status.RUNNING)
+  assertFalse(ResumePolicy.decide(complete,plan).allowed)
+  assertFalse(ResumePolicy.decide(failed,plan).allowed)
+  assertFalse(ResumePolicy.decide(changed,plan).allowed)
+ }
 }
