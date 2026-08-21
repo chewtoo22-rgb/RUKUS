@@ -12,7 +12,7 @@ data class ResumeDecision(
  * resumes at the first unverified step; confirmation-gated work stays gated.
  */
 object ResumePolicy {
-    fun decide(session: PersistedTaskSession?, plan: CommandPlan): ResumeDecision {
+    fun decide(session: PersistedTaskSession?, plan: CommandPlanner.Plan): ResumeDecision {
         if (session == null) return ResumeDecision(false, reason = "No saved task session")
         if (session.request.isBlank()) return ResumeDecision(false, reason = "Saved task has no request")
         if (plan.actions.isEmpty() || plan.rejectedParts.isNotEmpty()) return ResumeDecision(false, reason = "Saved request no longer produces a valid plan")
