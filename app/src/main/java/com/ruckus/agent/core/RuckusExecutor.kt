@@ -134,14 +134,24 @@ class RuckusExecutor(context:Context){
             setState(AgentTaskState(request,index+1,plan.actions.size,executedAction,after,recoveryAttempts,AgentTaskState.Status.RUNNING))
         }
 
-        val final=AgentTaskState(request,plan.actions.size,plan.actions.size,plan.actions.last(),AgentTaskStateStore.get().lastScreenSummary,recoveryAttempts,AgentTaskState.Status.COMPLETE)
+        val finalScreen=AgentTaskStateStore.get().lastScreenSummary
+        val completion=TaskCompletionGate.evaluate(plan,plan.actions.size,finalScreen)
+        if(!completion.ok) {
+            val last=plan.actions.last()
+            ActionAudit.record(request,last,"COMPLETION_GATE_FAILED: ${completion.reason}")
+            setState(AgentTaskState(request,plan.actions.size,plan.actions.size,last,finalScreen,recoveryAttempts,AgentTaskState.Status.FAILED))
+            return ExecutionReport(false,"All steps ran, but task completion could not be proven: ${completion.reason}",last,false,plan.actions.size,plan.actions.size,recoveryAttempts>0)
+        }
+
+        val final=AgentTaskState(request,plan.actions.size,plan.actions.size,plan.actions.last(),finalScreen,recoveryAttempts,AgentTaskState.Status.COMPLETE)
         setState(final)
+        ActionAudit.record(request,plan.actions.last(),"TASK_COMPLETE: ${completion.reason}")
         val completedNow=plan.actions.size-startStep
         val msg=when {
-            resumed && completedNow==1 -> "Resumed task; final action completed and verified"
-            resumed -> "Resumed at step ${startStep+1}; ${completedNow} remaining actions completed and verified"
-            plan.actions.size==1 -> "1 action completed and verified"
-            else -> "${plan.actions.size} actions completed and verified"
+            resumed && completedNow==1 -> "Resumed task; final action completed and task completion verified"
+            resumed -> "Resumed at step ${startStep+1}; ${completedNow} remaining actions completed and task completion verified"
+            plan.actions.size==1 -> "1 action completed and task completion verified"
+            else -> "${plan.actions.size} actions completed and task completion verified"
         }
         return ExecutionReport(true,msg,plan.actions.last(),false,plan.actions.size,plan.actions.size,recoveryAttempts>0)
     }
