@@ -10,6 +10,8 @@ data class ResumeDecision(
  * Conservative checkpoint resume policy.
  * Completed/rejected sessions are never resumed. A persisted RUNNING checkpoint
  * resumes at the first unverified step; confirmation-gated work stays gated.
+ * EXECUTING means the process may have died after dispatch, so the executor must
+ * reconcile the observed outcome before deciding whether a replay is safe.
  */
 object ResumePolicy {
     fun decide(session: PersistedTaskSession?, plan: CommandPlanner.Plan): ResumeDecision {
@@ -32,6 +34,7 @@ object ResumePolicy {
 
         return when (session.status) {
             AgentTaskState.Status.WAITING_CONFIRMATION -> ResumeDecision(true, step, "Resume at confirmation-gated step with exact saved plan")
+            AgentTaskState.Status.EXECUTING -> ResumeDecision(true, step, "Reconcile ambiguous in-flight action before any replay")
             AgentTaskState.Status.RUNNING,
             AgentTaskState.Status.RECOVERING -> ResumeDecision(true, step, "Resume from first unverified checkpoint with exact saved plan")
             else -> ResumeDecision(false, reason = "Session is not resumable")
