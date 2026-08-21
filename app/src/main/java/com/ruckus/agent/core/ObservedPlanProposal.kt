@@ -7,12 +7,13 @@ import java.security.MessageDigest
  *
  * A future reasoning planner may propose typed AgentActions, but those actions must not be
  * executed against a different screen than the one the planner inspected. This gate gives the
- * inspect -> plan boundary a deterministic freshness check before execution begins.
+ * inspect -> plan boundary deterministic freshness and proposal-integrity checks before execution.
  */
 data class ObservedPlanProposal(
     val goal: String,
     val actions: List<AgentAction>,
     val observationFingerprint: String,
+    val planFingerprint: String,
 ) {
     companion object {
         const val MAX_GOAL_LENGTH = 500
@@ -25,14 +26,17 @@ data class ObservedPlanProposal(
             }
             val normalizedObservation = normalizeObservation(observation)
                 ?: return Result.failure(IllegalArgumentException("Planner observation is missing or not package-aware"))
-            val admission = PlanAdmissionPolicy.evaluate(actions)
+            val admittedActions = actions.toList()
+            val admission = PlanAdmissionPolicy.evaluate(admittedActions)
             if (!admission.allowed) return Result.failure(IllegalArgumentException(admission.reason))
+            val plan = CommandPlanner.Plan(admittedActions, emptyList())
 
             return Result.success(
                 ObservedPlanProposal(
                     goal = cleanGoal,
-                    actions = actions.toList(),
+                    actions = admittedActions,
                     observationFingerprint = fingerprint(normalizedObservation),
+                    planFingerprint = PlanFingerprint.of(plan),
                 )
             )
         }
@@ -60,6 +64,16 @@ object ObservedPlanFreshnessGate {
         if (currentFingerprint != proposal.observationFingerprint) {
             return Decision(false, "UI changed after planning; re-inspection and replanning required")
         }
-        return Decision(true, "Plan is bound to the current UI observation")
+
+        val admission = PlanAdmissionPolicy.evaluate(proposal.actions)
+        if (!admission.allowed) {
+            return Decision(false, "Proposed plan no longer passes admission: ${admission.reason}")
+        }
+        val currentPlanFingerprint = PlanFingerprint.of(CommandPlanner.Plan(proposal.actions, emptyList()))
+        if (currentPlanFingerprint != proposal.planFingerprint) {
+            return Decision(false, "Proposed actions changed after admission; discard and replan")
+        }
+
+        return Decision(true, "Plan is intact and bound to the current UI observation")
     }
 }
