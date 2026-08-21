@@ -13,9 +13,10 @@ class ObservedPlanProposalTest {
             goal = "Continue in the current app",
             actions = listOf(AgentAction.TapLabel("Continue")),
             observation = screen,
+            nowEpochMs = 1_000L,
         ).getOrThrow()
 
-        val decision = ObservedPlanFreshnessGate.evaluate(proposal, screen)
+        val decision = ObservedPlanFreshnessGate.evaluate(proposal, screen, nowEpochMs = 1_500L)
         assertTrue(decision.allowed)
     }
 
@@ -25,11 +26,13 @@ class ObservedPlanProposalTest {
             goal = "Continue in the current app",
             actions = listOf(AgentAction.TapLabel("Continue")),
             observation = screen,
+            nowEpochMs = 1_000L,
         ).getOrThrow()
 
         val decision = ObservedPlanFreshnessGate.evaluate(
             proposal,
             "pkg=com.example.app\ntext=Confirm purchase",
+            nowEpochMs = 1_500L,
         )
         assertFalse(decision.allowed)
         assertTrue(decision.reason.contains("replanning", ignoreCase = true))
@@ -65,10 +68,11 @@ class ObservedPlanProposalTest {
             goal = "Continue in the current app",
             actions = listOf(AgentAction.TapLabel("Continue")),
             observation = screen,
+            nowEpochMs = 1_000L,
         ).getOrThrow()
         val tampered = proposal.copy(actions = listOf(AgentAction.Home))
 
-        val decision = ObservedPlanFreshnessGate.evaluate(tampered, screen)
+        val decision = ObservedPlanFreshnessGate.evaluate(tampered, screen, nowEpochMs = 1_500L)
 
         assertFalse(decision.allowed)
         assertTrue(decision.reason.contains("changed after admission", ignoreCase = true))
@@ -80,12 +84,68 @@ class ObservedPlanProposalTest {
             goal = "Continue in the current app",
             actions = listOf(AgentAction.TapLabel("Continue")),
             observation = screen,
+            nowEpochMs = 1_000L,
         ).getOrThrow()
         val tampered = proposal.copy(actions = listOf(AgentAction.SetMediaVolume(101)))
 
-        val decision = ObservedPlanFreshnessGate.evaluate(tampered, screen)
+        val decision = ObservedPlanFreshnessGate.evaluate(tampered, screen, nowEpochMs = 1_500L)
 
         assertFalse(decision.allowed)
         assertTrue(decision.reason.contains("admission", ignoreCase = true))
+    }
+
+    @Test
+    fun expired_proposal_requires_reinspection_and_replanning() {
+        val proposal = ObservedPlanProposal.create(
+            goal = "Continue in the current app",
+            actions = listOf(AgentAction.TapLabel("Continue")),
+            observation = screen,
+            nowEpochMs = 1_000L,
+        ).getOrThrow()
+
+        val decision = ObservedPlanFreshnessGate.evaluate(
+            proposal,
+            screen,
+            nowEpochMs = 1_000L + ObservedPlanProposal.MAX_PROPOSAL_AGE_MS + 1L,
+        )
+
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("expired", ignoreCase = true))
+    }
+
+    @Test
+    fun future_dated_proposal_is_rejected() {
+        val proposal = ObservedPlanProposal.create(
+            goal = "Continue in the current app",
+            actions = listOf(AgentAction.TapLabel("Continue")),
+            observation = screen,
+            nowEpochMs = 2_000L,
+        ).getOrThrow()
+
+        val decision = ObservedPlanFreshnessGate.evaluate(proposal, screen, nowEpochMs = 1_999L)
+
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("future", ignoreCase = true))
+    }
+
+    @Test
+    fun timestamp_or_goal_mutation_invalidates_proposal_envelope() {
+        val proposal = ObservedPlanProposal.create(
+            goal = "Continue in the current app",
+            actions = listOf(AgentAction.TapLabel("Continue")),
+            observation = screen,
+            nowEpochMs = 1_000L,
+        ).getOrThrow()
+
+        val timestampTampered = proposal.copy(issuedAtEpochMs = 1_200L)
+        val goalTampered = proposal.copy(goal = "Go home")
+
+        val timestampDecision = ObservedPlanFreshnessGate.evaluate(timestampTampered, screen, nowEpochMs = 1_500L)
+        val goalDecision = ObservedPlanFreshnessGate.evaluate(goalTampered, screen, nowEpochMs = 1_500L)
+
+        assertFalse(timestampDecision.allowed)
+        assertFalse(goalDecision.allowed)
+        assertTrue(timestampDecision.reason.contains("metadata changed", ignoreCase = true))
+        assertTrue(goalDecision.reason.contains("metadata changed", ignoreCase = true))
     }
 }
