@@ -24,18 +24,35 @@ class RuckusExecutor(context:Context){
         val plan=CommandPlanner.plan(request)
         if(plan.actions.isEmpty()) return failEarly(request,"No executable command",0)
         if(plan.rejectedParts.isNotEmpty()) return failEarly(request,"I understood part of that, but not: ${plan.rejectedParts.joinToString()}",plan.actions.size)
+        return executePlan(request,plan,0,approved,false)
+    }
 
-        setState(AgentTaskState(request,0,plan.actions.size,null,null,0,AgentTaskState.Status.RUNNING))
-        var anyRecovery=false
+    /** Resume from the first unverified persisted checkpoint instead of replaying verified steps. */
+    fun resumeLast(approved:Boolean=false):ExecutionReport {
+        val session=sessions.load() ?: return ExecutionReport(false,"No saved task session")
+        val plan=CommandPlanner.plan(session.request)
+        val decision=ResumePolicy.decide(session,plan)
+        if(!decision.allowed) return ExecutionReport(false,decision.reason,completedSteps=session.currentStep,totalSteps=session.totalSteps)
+        ActionAudit.record(session.request,null,"RESUME: ${decision.reason} step=${decision.startStep+1}/${plan.actions.size}")
+        return executePlan(session.request,plan,decision.startStep,approved,true)
+    }
 
-        for((index,action) in plan.actions.withIndex()) {
+    private fun executePlan(request:String, plan:CommandPlanner.Plan, startStep:Int, approved:Boolean, resumed:Boolean):ExecutionReport {
+        val prior=sessions.load()
+        val initialScreen=if(resumed) prior?.lastScreenSummary else null
+        val priorRecovery=if(resumed) prior?.recoveryAttempts ?: 0 else 0
+        setState(AgentTaskState(request,startStep,plan.actions.size,null,initialScreen,priorRecovery,AgentTaskState.Status.RUNNING))
+        var anyRecovery=priorRecovery>0
+
+        for(index in startStep until plan.actions.size) {
+            val action=plan.actions[index]
             val before=controller.execute(AgentAction.InspectScreen).getOrNull()
-            setState(AgentTaskState(request,index,plan.actions.size,action,before,0,AgentTaskState.Status.RUNNING))
+            setState(AgentTaskState(request,index,plan.actions.size,action,before,if(anyRecovery)1 else 0,AgentTaskState.Status.RUNNING))
             val decision=SafetyGate.classify(action)
             if(decision.risk==Risk.BLOCKED) return terminalFailure(request,index,plan.actions.size,action,decision.reason,anyRecovery)
             if(decision.risk==Risk.CONFIRM&&!approved) {
                 ActionAudit.record(request,action,"AWAITING_CONFIRMATION")
-                setState(AgentTaskState(request,index,plan.actions.size,action,before,0,AgentTaskState.Status.WAITING_CONFIRMATION))
+                setState(AgentTaskState(request,index,plan.actions.size,action,before,if(anyRecovery)1 else 0,AgentTaskState.Status.WAITING_CONFIRMATION))
                 return ExecutionReport(false,decision.reason,action,true,index,plan.actions.size,anyRecovery)
             }
 
@@ -101,9 +118,15 @@ class RuckusExecutor(context:Context){
             setState(AgentTaskState(request,index+1,plan.actions.size,executedAction,after,if(anyRecovery)1 else 0,AgentTaskState.Status.RUNNING))
         }
 
-        val final=AgentTaskState(request,plan.actions.size,plan.actions.size,plan.actions.last(),AgentTaskStateStore.get().lastScreenSummary,0,AgentTaskState.Status.COMPLETE)
+        val final=AgentTaskState(request,plan.actions.size,plan.actions.size,plan.actions.last(),AgentTaskStateStore.get().lastScreenSummary,if(anyRecovery)1 else 0,AgentTaskState.Status.COMPLETE)
         setState(final)
-        val msg=if(plan.actions.size==1) "1 action completed and verified" else "${plan.actions.size} actions completed and verified"
+        val completedNow=plan.actions.size-startStep
+        val msg=when {
+            resumed && completedNow==1 -> "Resumed task; final action completed and verified"
+            resumed -> "Resumed at step ${startStep+1}; ${completedNow} remaining actions completed and verified"
+            plan.actions.size==1 -> "1 action completed and verified"
+            else -> "${plan.actions.size} actions completed and verified"
+        }
         return ExecutionReport(true,msg,plan.actions.last(),false,plan.actions.size,plan.actions.size,anyRecovery)
     }
 
