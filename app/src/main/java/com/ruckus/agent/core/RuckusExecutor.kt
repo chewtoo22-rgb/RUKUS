@@ -70,13 +70,16 @@ class RuckusExecutor(context:Context){
                 }
                 if(result.isFailure) {
                     val screen=controller.execute(AgentAction.InspectScreen).getOrNull()
-                    val adaptive=AdaptiveRecoveryPlanner.replan(executedAction,screen,firstError)
-                    if(adaptive.alternate!=null && SafetyGate.classify(adaptive.alternate).risk==Risk.SAFE) {
+                    val adaptive=AdaptiveRecoveryPlanner.replan(action,screen,firstError)
+                    val alternate=adaptive.alternate
+                    if(alternate!=null && SafetyGate.classify(alternate).risk==Risk.SAFE && RecoveryEquivalence.canSubstitute(action,alternate,adaptive.confidence)) {
                         anyRecovery=true
-                        executedAction=adaptive.alternate
+                        executedAction=alternate
                         ActionAudit.record(request,executedAction,"REPLAN: ${adaptive.reason} confidence=${adaptive.confidence}")
                         setState(AgentTaskState(request,index,plan.actions.size,executedAction,screen,1,AgentTaskState.Status.RECOVERING))
                         result=controller.execute(executedAction)
+                    } else if(alternate!=null) {
+                        ActionAudit.record(request,action,"REPLAN_REJECTED: safe alternate did not preserve original intent (${adaptive.reason})")
                     }
                 }
             }
@@ -90,10 +93,11 @@ class RuckusExecutor(context:Context){
             var verify=ActionVerifier.verify(executedAction,before,after,result.getOrNull())
             if(!verify.ok) {
                 ActionAudit.record(request,executedAction,"VERIFY_FAILED: ${verify.reason}")
-                val adaptive=AdaptiveRecoveryPlanner.replan(executedAction,after,verify.reason)
-                if(adaptive.alternate!=null && SafetyGate.classify(adaptive.alternate).risk==Risk.SAFE) {
+                val adaptive=AdaptiveRecoveryPlanner.replan(action,after,verify.reason)
+                val alternate=adaptive.alternate
+                if(alternate!=null && SafetyGate.classify(alternate).risk==Risk.SAFE && RecoveryEquivalence.canSubstitute(action,alternate,adaptive.confidence)) {
                     anyRecovery=true
-                    executedAction=adaptive.alternate
+                    executedAction=alternate
                     ActionAudit.record(request,executedAction,"VERIFY_REPLAN: ${adaptive.reason} confidence=${adaptive.confidence}")
                     setState(AgentTaskState(request,index,plan.actions.size,executedAction,after,1,AgentTaskState.Status.RECOVERING))
                     val alternateResult=controller.execute(executedAction)
@@ -106,6 +110,8 @@ class RuckusExecutor(context:Context){
                             verify=alternateVerify
                         }
                     }
+                } else if(alternate!=null) {
+                    ActionAudit.record(request,action,"VERIFY_REPLAN_REJECTED: alternate did not preserve original intent (${adaptive.reason})")
                 }
             }
 
