@@ -44,6 +44,10 @@ data class ObservedPlanProposal(
             if (!reasoningAdmission.allowed) {
                 return Result.failure(IllegalArgumentException(reasoningAdmission.reason))
             }
+            val grounding = ReasoningGroundingPolicy.evaluate(admittedActions, normalizedObservation)
+            if (!grounding.allowed) {
+                return Result.failure(IllegalArgumentException(grounding.reason))
+            }
             val plan = CommandPlanner.Plan(admittedActions, emptyList())
             val observationFingerprint = fingerprint(normalizedObservation)
             val planFingerprint = PlanFingerprint.of(plan)
@@ -129,11 +133,15 @@ object ObservedPlanFreshnessGate {
         if (!reasoningAdmission.allowed) {
             return Decision(false, "Proposed plan no longer passes reasoning admission: ${reasoningAdmission.reason}")
         }
+        val grounding = ReasoningGroundingPolicy.evaluate(proposal.actions, normalized)
+        if (!grounding.allowed) {
+            return Decision(false, "Proposed plan no longer passes UI grounding: ${grounding.reason}")
+        }
         val currentPlanFingerprint = PlanFingerprint.of(CommandPlanner.Plan(proposal.actions, emptyList()))
         if (currentPlanFingerprint != proposal.planFingerprint) {
             return Decision(false, "Proposed actions changed after admission; discard and replan")
         }
 
-        return Decision(true, "Plan is intact, short-lived, and bound to the current UI observation")
+        return Decision(true, "Plan is intact, grounded, short-lived, and bound to the current UI observation")
     }
 }
