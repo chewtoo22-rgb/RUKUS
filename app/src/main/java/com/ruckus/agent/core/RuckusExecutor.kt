@@ -134,13 +134,42 @@ class RuckusExecutor(context:Context){
             setState(AgentTaskState(request,index+1,plan.actions.size,executedAction,after,recoveryAttempts,AgentTaskState.Status.RUNNING))
         }
 
-        val finalScreen=AgentTaskStateStore.get().lastScreenSummary
-        val completion=TaskCompletionGate.evaluate(plan,plan.actions.size,finalScreen)
+        var finalScreen=AgentTaskStateStore.get().lastScreenSummary
+        var completion=TaskCompletionGate.evaluate(plan,plan.actions.size,finalScreen)
         if(!completion.ok) {
             val last=plan.actions.last()
             ActionAudit.record(request,last,"COMPLETION_GATE_FAILED: ${completion.reason}")
+            val repair=TaskCompletionRepairPlanner.plan(last,completion.reason)
+            val repairAction=repair.action
+            if(repairAction!=null && SafetyGate.classify(repairAction).risk==Risk.SAFE) {
+                reserveRecovery(repairAction,plan.actions.lastIndex,"Completion repair: ${repair.reason}")?.let { return it }
+                val beforeRepair=finalScreen
+                setState(AgentTaskState(request,plan.actions.size,plan.actions.size,repairAction,beforeRepair,recoveryAttempts,AgentTaskState.Status.RECOVERING))
+                ActionAudit.record(request,repairAction,"COMPLETION_REPAIR: ${repair.reason}")
+                val repairResult=controller.execute(repairAction)
+                if(repairResult.isSuccess) {
+                    val repairedScreen=controller.execute(AgentAction.InspectScreen).getOrNull()
+                    val repairVerify=ActionVerifier.verify(repairAction,beforeRepair,repairedScreen,repairResult.getOrNull())
+                    if(repairVerify.ok) {
+                        finalScreen=repairedScreen
+                        completion=TaskCompletionGate.evaluate(plan,plan.actions.size,finalScreen)
+                        if(completion.ok) ActionAudit.record(request,repairAction,"COMPLETION_REPAIR_VERIFIED: ${completion.reason}")
+                        else ActionAudit.record(request,repairAction,"COMPLETION_REPAIR_GATE_FAILED: ${completion.reason}")
+                    } else {
+                        ActionAudit.record(request,repairAction,"COMPLETION_REPAIR_VERIFY_FAILED: ${repairVerify.reason}")
+                    }
+                } else {
+                    ActionAudit.record(request,repairAction,"COMPLETION_REPAIR_EXEC_FAILED: ${repairResult.exceptionOrNull()?.message ?: "Execution failed"}")
+                }
+            } else {
+                ActionAudit.record(request,last,"COMPLETION_REPAIR_UNAVAILABLE: ${repair.reason}")
+            }
+        }
+
+        if(!completion.ok) {
+            val last=plan.actions.last()
             setState(AgentTaskState(request,plan.actions.size,plan.actions.size,last,finalScreen,recoveryAttempts,AgentTaskState.Status.FAILED))
-            return ExecutionReport(false,"All steps ran, but task completion could not be proven: ${completion.reason}",last,false,plan.actions.size,plan.actions.size,recoveryAttempts>0)
+            return ExecutionReport(false,"All steps ran, but task completion could not be proven after bounded repair: ${completion.reason}",last,false,plan.actions.size,plan.actions.size,recoveryAttempts>0)
         }
 
         val final=AgentTaskState(request,plan.actions.size,plan.actions.size,plan.actions.last(),finalScreen,recoveryAttempts,AgentTaskState.Status.COMPLETE)
