@@ -17,10 +17,12 @@ class RuckusExecutor(context:Context){
     private val appContext=context.applicationContext
     private val controller=DeviceController(appContext)
     private val sessions=TaskSessionStore(appContext)
+    private var activePlanFingerprint:String?=null
 
     fun lastSession(): PersistedTaskSession? = sessions.load()
 
     fun run(request:String, approved:Boolean=false):ExecutionReport {
+        activePlanFingerprint=null
         val plan=CommandPlanner.plan(request)
         if(plan.actions.isEmpty()) return failEarly(request,"No executable command",0)
         if(plan.rejectedParts.isNotEmpty()) return failEarly(request,"I understood part of that, but not: ${plan.rejectedParts.joinToString()}",plan.actions.size)
@@ -29,6 +31,7 @@ class RuckusExecutor(context:Context){
 
     /** Resume from the first unverified persisted checkpoint instead of replaying verified steps. */
     fun resumeLast(approved:Boolean=false):ExecutionReport {
+        activePlanFingerprint=null
         val session=sessions.load() ?: return ExecutionReport(false,"No saved task session")
         val plan=CommandPlanner.plan(session.request)
         val decision=ResumePolicy.decide(session,plan)
@@ -38,6 +41,7 @@ class RuckusExecutor(context:Context){
     }
 
     private fun executePlan(request:String, plan:CommandPlanner.Plan, startStep:Int, approved:Boolean, resumed:Boolean):ExecutionReport {
+        activePlanFingerprint=PlanFingerprint.of(plan)
         val prior=sessions.load()
         val initialScreen=if(resumed) prior?.lastScreenSummary else null
         var recoveryAttempts=if(resumed) prior?.recoveryAttempts ?: 0 else 0
@@ -215,7 +219,7 @@ class RuckusExecutor(context:Context){
         return observation.screen
     }
 
-    private fun setState(state:AgentTaskState){ AgentTaskStateStore.set(state); sessions.save(state) }
+    private fun setState(state:AgentTaskState){ AgentTaskStateStore.set(state); sessions.save(state,activePlanFingerprint) }
 
     private fun failEarly(request:String,why:String,total:Int):ExecutionReport {
         ActionAudit.record(request,null,"REJECTED: $why")
