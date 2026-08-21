@@ -41,6 +41,23 @@ class RuckusExecutor(context:Context){
         val prior=sessions.load()
         val initialScreen=if(resumed) prior?.lastScreenSummary else null
         var recoveryAttempts=if(resumed) prior?.recoveryAttempts ?: 0 else 0
+
+        val preflight=PlanSafetyPreflight.evaluate(plan.actions,startStep,approved)
+        if(!preflight.allowed) {
+            val action=preflight.action
+            val index=preflight.actionIndex ?: startStep
+            if(preflight.needsConfirmation && action!=null) {
+                ActionAudit.record(request,action,"PLAN_AWAITING_CONFIRMATION: ${preflight.reason}")
+                setState(AgentTaskState(request,index,plan.actions.size,action,initialScreen,recoveryAttempts,AgentTaskState.Status.WAITING_CONFIRMATION))
+                return ExecutionReport(false,preflight.reason,action,true,startStep,plan.actions.size,recoveryAttempts>0)
+            }
+            if(action!=null) {
+                ActionAudit.record(request,action,"PLAN_PREFLIGHT_BLOCKED: ${preflight.reason}")
+                return terminalFailure(request,index,plan.actions.size,action,preflight.reason,recoveryAttempts)
+            }
+            return ExecutionReport(false,preflight.reason,completedSteps=startStep,totalSteps=plan.actions.size,recovered=recoveryAttempts>0)
+        }
+        ActionAudit.record(request,null,"PLAN_PREFLIGHT_OK: ${preflight.reason} startStep=$startStep")
         setState(AgentTaskState(request,startStep,plan.actions.size,null,initialScreen,recoveryAttempts,AgentTaskState.Status.RUNNING))
 
         fun reserveRecovery(action:AgentAction,index:Int,reason:String):ExecutionReport? {
