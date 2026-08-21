@@ -58,4 +58,34 @@ class ObservedPlanProposalTest {
         val oversized = "g".repeat(ObservedPlanProposal.MAX_GOAL_LENGTH + 1)
         assertTrue(ObservedPlanProposal.create(oversized, listOf(AgentAction.Home), screen).isFailure)
     }
+
+    @Test
+    fun action_mutation_after_admission_is_rejected() {
+        val proposal = ObservedPlanProposal.create(
+            goal = "Continue in the current app",
+            actions = listOf(AgentAction.TapLabel("Continue")),
+            observation = screen,
+        ).getOrThrow()
+        val tampered = proposal.copy(actions = listOf(AgentAction.Home))
+
+        val decision = ObservedPlanFreshnessGate.evaluate(tampered, screen)
+
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("changed after admission", ignoreCase = true))
+    }
+
+    @Test
+    fun invalid_actions_cannot_bypass_admission_by_copying_a_proposal() {
+        val proposal = ObservedPlanProposal.create(
+            goal = "Continue in the current app",
+            actions = listOf(AgentAction.TapLabel("Continue")),
+            observation = screen,
+        ).getOrThrow()
+        val tampered = proposal.copy(actions = listOf(AgentAction.SetMediaVolume(101)))
+
+        val decision = ObservedPlanFreshnessGate.evaluate(tampered, screen)
+
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("admission", ignoreCase = true))
+    }
 }
