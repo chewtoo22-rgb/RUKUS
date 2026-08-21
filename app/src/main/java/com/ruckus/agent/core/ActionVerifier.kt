@@ -5,8 +5,17 @@ data class VerificationResult(val ok:Boolean,val reason:String)
 object ActionVerifier {
     fun verify(action:AgentAction,before:String?,after:String?,result:String?):VerificationResult {
         return when(action) {
+            is AgentAction.OpenApp -> {
+                if(after?.contains("pkg=${action.packageName}",ignoreCase=true)==true) VerificationResult(true,"Target package is foreground")
+                else VerificationResult(false,"Target package not observed after launch")
+            }
+            is AgentAction.OpenAppByName -> {
+                val launchedPkg=result?.substringAfter("package=","")?.trim().orEmpty()
+                if(launchedPkg.isNotEmpty() && after?.contains("pkg=$launchedPkg",ignoreCase=true)==true) VerificationResult(true,"Resolved app package is foreground")
+                else if(before!=null && after!=null && before!=after && result!=null) VerificationResult(true,"UI changed after app launch")
+                else VerificationResult(false,"App launch could not be verified")
+            }
             AgentAction.Home, AgentAction.Back,
-            is AgentAction.OpenApp, is AgentAction.OpenAppByName,
             is AgentAction.Tap, is AgentAction.TapLabel,
             is AgentAction.Swipe, is AgentAction.Scroll -> {
                 if(before != null && after != null && before != after) VerificationResult(true,"Visible UI changed")
@@ -15,12 +24,12 @@ object ActionVerifier {
             }
             is AgentAction.TypeText -> {
                 if(after?.contains(action.text, ignoreCase = true) == true) VerificationResult(true,"Typed text is visible")
-                else if(result != null) VerificationResult(true,"Text adapter reported success")
+                else if(result != null && before!=after) VerificationResult(true,"UI changed after text entry")
                 else VerificationResult(false,"Typed text not observed")
             }
             is AgentAction.SetBrightness, is AgentAction.SetMediaVolume ->
                 if(result != null) VerificationResult(true,result) else VerificationResult(false,"Setting change was not acknowledged")
-            AgentAction.InspectScreen -> VerificationResult(after != null,"Screen inspection completed")
+            AgentAction.InspectScreen -> VerificationResult(after?.startsWith("pkg=")==true,"Package-aware screen inspection completed")
             is AgentAction.RunApprovedShell -> VerificationResult(result != null,result ?: "Privileged action not acknowledged")
         }
     }
