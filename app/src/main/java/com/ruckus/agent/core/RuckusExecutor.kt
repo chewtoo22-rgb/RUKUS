@@ -40,20 +40,30 @@ class RuckusExecutor(context:Context){
     private fun executePlan(request:String, plan:CommandPlanner.Plan, startStep:Int, approved:Boolean, resumed:Boolean):ExecutionReport {
         val prior=sessions.load()
         val initialScreen=if(resumed) prior?.lastScreenSummary else null
-        val priorRecovery=if(resumed) prior?.recoveryAttempts ?: 0 else 0
-        setState(AgentTaskState(request,startStep,plan.actions.size,null,initialScreen,priorRecovery,AgentTaskState.Status.RUNNING))
-        var anyRecovery=priorRecovery>0
+        var recoveryAttempts=if(resumed) prior?.recoveryAttempts ?: 0 else 0
+        setState(AgentTaskState(request,startStep,plan.actions.size,null,initialScreen,recoveryAttempts,AgentTaskState.Status.RUNNING))
+
+        fun reserveRecovery(action:AgentAction,index:Int,reason:String):ExecutionReport? {
+            val budget=RecoveryBudget.decide(recoveryAttempts)
+            if(!budget.allowed) {
+                ActionAudit.record(request,action,"RECOVERY_BUDGET_EXHAUSTED: $reason")
+                return terminalFailure(request,index,plan.actions.size,action,budget.reason,recoveryAttempts)
+            }
+            recoveryAttempts += 1
+            ActionAudit.record(request,action,"RECOVERY_BUDGET: ${budget.reason} | $reason")
+            return null
+        }
 
         for(index in startStep until plan.actions.size) {
             val action=plan.actions[index]
             val before=controller.execute(AgentAction.InspectScreen).getOrNull()
-            setState(AgentTaskState(request,index,plan.actions.size,action,before,if(anyRecovery)1 else 0,AgentTaskState.Status.RUNNING))
+            setState(AgentTaskState(request,index,plan.actions.size,action,before,recoveryAttempts,AgentTaskState.Status.RUNNING))
             val decision=SafetyGate.classify(action)
-            if(decision.risk==Risk.BLOCKED) return terminalFailure(request,index,plan.actions.size,action,decision.reason,anyRecovery)
+            if(decision.risk==Risk.BLOCKED) return terminalFailure(request,index,plan.actions.size,action,decision.reason,recoveryAttempts)
             if(decision.risk==Risk.CONFIRM&&!approved) {
                 ActionAudit.record(request,action,"AWAITING_CONFIRMATION")
-                setState(AgentTaskState(request,index,plan.actions.size,action,before,if(anyRecovery)1 else 0,AgentTaskState.Status.WAITING_CONFIRMATION))
-                return ExecutionReport(false,decision.reason,action,true,index,plan.actions.size,anyRecovery)
+                setState(AgentTaskState(request,index,plan.actions.size,action,before,recoveryAttempts,AgentTaskState.Status.WAITING_CONFIRMATION))
+                return ExecutionReport(false,decision.reason,action,true,index,plan.actions.size,recoveryAttempts>0)
             }
 
             var executedAction=action
@@ -62,9 +72,9 @@ class RuckusExecutor(context:Context){
                 val firstError=result.exceptionOrNull()?.message ?: "Execution failed"
                 val recovery=RecoveryPolicy.decide(executedAction,firstError)
                 if(recovery.retry) {
-                    anyRecovery=true
+                    reserveRecovery(executedAction,index,recovery.reason)?.let { return it }
                     val screen=if(recovery.inspectFirst) controller.execute(AgentAction.InspectScreen).getOrNull() else before
-                    setState(AgentTaskState(request,index,plan.actions.size,executedAction,screen,1,AgentTaskState.Status.RECOVERING))
+                    setState(AgentTaskState(request,index,plan.actions.size,executedAction,screen,recoveryAttempts,AgentTaskState.Status.RECOVERING))
                     ActionAudit.record(request,executedAction,"RECOVERY: ${recovery.reason}")
                     result=controller.execute(executedAction)
                 }
@@ -73,10 +83,10 @@ class RuckusExecutor(context:Context){
                     val adaptive=AdaptiveRecoveryPlanner.replan(action,screen,firstError)
                     val alternate=adaptive.alternate
                     if(alternate!=null && SafetyGate.classify(alternate).risk==Risk.SAFE && RecoveryEquivalence.canSubstitute(action,alternate,adaptive.confidence)) {
-                        anyRecovery=true
+                        reserveRecovery(alternate,index,adaptive.reason)?.let { return it }
                         executedAction=alternate
                         ActionAudit.record(request,executedAction,"REPLAN: ${adaptive.reason} confidence=${adaptive.confidence}")
-                        setState(AgentTaskState(request,index,plan.actions.size,executedAction,screen,1,AgentTaskState.Status.RECOVERING))
+                        setState(AgentTaskState(request,index,plan.actions.size,executedAction,screen,recoveryAttempts,AgentTaskState.Status.RECOVERING))
                         result=controller.execute(executedAction)
                     } else if(alternate!=null) {
                         ActionAudit.record(request,action,"REPLAN_REJECTED: safe alternate did not preserve original intent (${adaptive.reason})")
@@ -86,7 +96,7 @@ class RuckusExecutor(context:Context){
 
             if(result.isFailure) {
                 val msg=result.exceptionOrNull()?.message ?: "Execution failed"
-                return terminalFailure(request,index,plan.actions.size,executedAction,msg,anyRecovery)
+                return terminalFailure(request,index,plan.actions.size,executedAction,msg,recoveryAttempts)
             }
 
             var after=controller.execute(AgentAction.InspectScreen).getOrNull()
@@ -96,10 +106,10 @@ class RuckusExecutor(context:Context){
                 val adaptive=AdaptiveRecoveryPlanner.replan(action,after,verify.reason)
                 val alternate=adaptive.alternate
                 if(alternate!=null && SafetyGate.classify(alternate).risk==Risk.SAFE && RecoveryEquivalence.canSubstitute(action,alternate,adaptive.confidence)) {
-                    anyRecovery=true
+                    reserveRecovery(alternate,index,adaptive.reason)?.let { return it }
                     executedAction=alternate
                     ActionAudit.record(request,executedAction,"VERIFY_REPLAN: ${adaptive.reason} confidence=${adaptive.confidence}")
-                    setState(AgentTaskState(request,index,plan.actions.size,executedAction,after,1,AgentTaskState.Status.RECOVERING))
+                    setState(AgentTaskState(request,index,plan.actions.size,executedAction,after,recoveryAttempts,AgentTaskState.Status.RECOVERING))
                     val alternateResult=controller.execute(executedAction)
                     if(alternateResult.isSuccess) {
                         val alternateAfter=controller.execute(AgentAction.InspectScreen).getOrNull()
@@ -116,15 +126,15 @@ class RuckusExecutor(context:Context){
             }
 
             if(!verify.ok) {
-                setState(AgentTaskState(request,index,plan.actions.size,executedAction,after,if(anyRecovery)1 else 0,AgentTaskState.Status.FAILED))
-                return ExecutionReport(false,"Step ${index+1}/${plan.actions.size} could not be verified after safe replanning: ${verify.reason}",executedAction,false,index,plan.actions.size,anyRecovery)
+                setState(AgentTaskState(request,index,plan.actions.size,executedAction,after,recoveryAttempts,AgentTaskState.Status.FAILED))
+                return ExecutionReport(false,"Step ${index+1}/${plan.actions.size} could not be verified after safe replanning: ${verify.reason}",executedAction,false,index,plan.actions.size,recoveryAttempts>0)
             }
 
             ActionAudit.record(request,executedAction,"OK+VERIFIED: ${verify.reason}")
-            setState(AgentTaskState(request,index+1,plan.actions.size,executedAction,after,if(anyRecovery)1 else 0,AgentTaskState.Status.RUNNING))
+            setState(AgentTaskState(request,index+1,plan.actions.size,executedAction,after,recoveryAttempts,AgentTaskState.Status.RUNNING))
         }
 
-        val final=AgentTaskState(request,plan.actions.size,plan.actions.size,plan.actions.last(),AgentTaskStateStore.get().lastScreenSummary,if(anyRecovery)1 else 0,AgentTaskState.Status.COMPLETE)
+        val final=AgentTaskState(request,plan.actions.size,plan.actions.size,plan.actions.last(),AgentTaskStateStore.get().lastScreenSummary,recoveryAttempts,AgentTaskState.Status.COMPLETE)
         setState(final)
         val completedNow=plan.actions.size-startStep
         val msg=when {
@@ -133,7 +143,7 @@ class RuckusExecutor(context:Context){
             plan.actions.size==1 -> "1 action completed and verified"
             else -> "${plan.actions.size} actions completed and verified"
         }
-        return ExecutionReport(true,msg,plan.actions.last(),false,plan.actions.size,plan.actions.size,anyRecovery)
+        return ExecutionReport(true,msg,plan.actions.last(),false,plan.actions.size,plan.actions.size,recoveryAttempts>0)
     }
 
     private fun setState(state:AgentTaskState){ AgentTaskStateStore.set(state); sessions.save(state) }
@@ -144,11 +154,11 @@ class RuckusExecutor(context:Context){
         return ExecutionReport(false,why,totalSteps=total)
     }
 
-    private fun terminalFailure(request:String,index:Int,total:Int,action:AgentAction,msg:String,recovered:Boolean):ExecutionReport {
+    private fun terminalFailure(request:String,index:Int,total:Int,action:AgentAction,msg:String,recoveryAttempts:Int):ExecutionReport {
         val screen=controller.execute(AgentAction.InspectScreen).getOrNull()
         ActionAudit.record(request,action,"FAILED: $msg")
-        setState(AgentTaskState(request,index,total,action,screen,if(recovered)1 else 0,AgentTaskState.Status.FAILED))
+        setState(AgentTaskState(request,index,total,action,screen,recoveryAttempts,AgentTaskState.Status.FAILED))
         val contextText=screen?.takeIf{it.isNotBlank()}?.let{" Visible now: $it"} ?: ""
-        return ExecutionReport(false,"Step ${index+1}/$total failed: $msg.$contextText",action,false,index,total,recovered)
+        return ExecutionReport(false,"Step ${index+1}/$total failed: $msg.$contextText",action,false,index,total,recoveryAttempts>0)
     }
 }
