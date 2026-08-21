@@ -99,7 +99,7 @@ class RuckusExecutor(context:Context){
                 return terminalFailure(request,index,plan.actions.size,executedAction,msg,recoveryAttempts)
             }
 
-            var after=controller.execute(AgentAction.InspectScreen).getOrNull()
+            var after=observeSettled(request,executedAction,before)
             var verify=ActionVerifier.verify(executedAction,before,after,result.getOrNull())
             if(!verify.ok) {
                 ActionAudit.record(request,executedAction,"VERIFY_FAILED: ${verify.reason}")
@@ -112,7 +112,7 @@ class RuckusExecutor(context:Context){
                     setState(AgentTaskState(request,index,plan.actions.size,executedAction,after,recoveryAttempts,AgentTaskState.Status.RECOVERING))
                     val alternateResult=controller.execute(executedAction)
                     if(alternateResult.isSuccess) {
-                        val alternateAfter=controller.execute(AgentAction.InspectScreen).getOrNull()
+                        val alternateAfter=observeSettled(request,executedAction,after)
                         val alternateVerify=ActionVerifier.verify(executedAction,after,alternateAfter,alternateResult.getOrNull())
                         if(alternateVerify.ok) {
                             result=alternateResult
@@ -148,7 +148,7 @@ class RuckusExecutor(context:Context){
                 ActionAudit.record(request,repairAction,"COMPLETION_REPAIR: ${repair.reason}")
                 val repairResult=controller.execute(repairAction)
                 if(repairResult.isSuccess) {
-                    val repairedScreen=controller.execute(AgentAction.InspectScreen).getOrNull()
+                    val repairedScreen=observeSettled(request,repairAction,beforeRepair)
                     val repairVerify=ActionVerifier.verify(repairAction,beforeRepair,repairedScreen,repairResult.getOrNull())
                     if(repairVerify.ok) {
                         finalScreen=repairedScreen
@@ -183,6 +183,19 @@ class RuckusExecutor(context:Context){
             else -> "${plan.actions.size} actions completed and task completion verified"
         }
         return ExecutionReport(true,msg,plan.actions.last(),false,plan.actions.size,plan.actions.size,recoveryAttempts>0)
+    }
+
+    private fun observeSettled(request:String,action:AgentAction,before:String?):String? {
+        val observation=ScreenObservationSettler.observe(
+            before=before,
+            sampler={ controller.execute(AgentAction.InspectScreen).getOrNull() },
+            pause={ delay ->
+                try { Thread.sleep(delay) }
+                catch(_:InterruptedException) { Thread.currentThread().interrupt() }
+            }
+        )
+        ActionAudit.record(request,action,"OBSERVE: samples=${observation.samples} stable=${observation.stable} changed=${observation.changedFromBefore}")
+        return observation.screen
     }
 
     private fun setState(state:AgentTaskState){ AgentTaskStateStore.set(state); sessions.save(state) }
