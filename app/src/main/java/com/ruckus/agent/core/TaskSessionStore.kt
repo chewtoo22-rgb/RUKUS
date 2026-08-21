@@ -6,7 +6,7 @@ import org.json.JSONObject
 class TaskSessionStore(context: Context) {
     private val prefs = context.getSharedPreferences("ruckus_task_session", Context.MODE_PRIVATE)
 
-    fun save(state: AgentTaskState) {
+    fun save(state: AgentTaskState, planFingerprint: String? = null) {
         val json = JSONObject().apply {
             put("request", state.request)
             put("currentStep", state.currentStep)
@@ -15,6 +15,7 @@ class TaskSessionStore(context: Context) {
             put("lastScreenSummary", state.lastScreenSummary)
             put("recoveryAttempts", state.recoveryAttempts)
             put("status", state.status.name)
+            put("planFingerprint", planFingerprint)
             put("savedAt", System.currentTimeMillis())
         }
         prefs.edit().putString(KEY, json.toString()).apply()
@@ -32,7 +33,8 @@ class TaskSessionStore(context: Context) {
                 lastScreenSummary = json.optString("lastScreenSummary").takeIf { it.isNotBlank() && it != "null" },
                 recoveryAttempts = json.optInt("recoveryAttempts"),
                 status = AgentTaskState.Status.valueOf(json.optString("status", AgentTaskState.Status.IDLE.name)),
-                savedAtMs = json.optLong("savedAt")
+                savedAtMs = json.optLong("savedAt"),
+                planFingerprint = json.optString("planFingerprint").takeIf { it.isNotBlank() && it != "null" }
             )
         }.getOrNull()
     }
@@ -50,5 +52,6 @@ data class PersistedTaskSession(
     val lastScreenSummary: String?,
     val recoveryAttempts: Int,
     val status: AgentTaskState.Status,
-    val savedAtMs: Long
+    val savedAtMs: Long,
+    val planFingerprint: String? = null
 )
