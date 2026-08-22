@@ -11,4 +11,5 @@ data class UiNodeSnapshot(
     val editable: Boolean,
     val sensitive: Boolean,
     val focused: Boolean,
+    val scrollable: Boolean,
 )
