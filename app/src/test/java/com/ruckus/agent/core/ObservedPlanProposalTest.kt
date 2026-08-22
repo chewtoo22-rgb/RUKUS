@@ -148,4 +148,44 @@ class ObservedPlanProposalTest {
         assertTrue(timestampDecision.reason.contains("metadata changed", ignoreCase = true))
         assertTrue(goalDecision.reason.contains("metadata changed", ignoreCase = true))
     }
+
+    @Test
+    fun autonomous_brightness_requires_exact_explicit_goal_value() {
+        val allowed = ObservedPlanProposal.create(
+            goal = "Set brightness to 42%",
+            actions = listOf(AgentAction.SetBrightness(42)),
+            observation = screen,
+        )
+        val mismatched = ObservedPlanProposal.create(
+            goal = "Set brightness to 42%",
+            actions = listOf(AgentAction.SetBrightness(80)),
+            observation = screen,
+        )
+
+        assertTrue(allowed.isSuccess)
+        assertTrue(mismatched.isFailure)
+    }
+
+    @Test
+    fun autonomous_volume_requires_explicit_goal_and_supports_unambiguous_aliases() {
+        val mute = ObservedPlanProposal.create(
+            goal = "Mute the phone",
+            actions = listOf(AgentAction.SetMediaVolume(0)),
+            observation = screen,
+        )
+        val explicit = ObservedPlanProposal.create(
+            goal = "Set media volume to 35 percent",
+            actions = listOf(AgentAction.SetMediaVolume(35)),
+            observation = screen,
+        )
+        val unrelated = ObservedPlanProposal.create(
+            goal = "Continue in the current app",
+            actions = listOf(AgentAction.SetMediaVolume(35)),
+            observation = screen,
+        )
+
+        assertTrue(mute.isSuccess)
+        assertTrue(explicit.isSuccess)
+        assertTrue(unrelated.isFailure)
+    }
 }
