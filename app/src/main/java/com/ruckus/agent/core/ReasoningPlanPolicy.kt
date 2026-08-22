@@ -7,11 +7,20 @@ package com.ruckus.agent.core
  * however, must stay inside a narrower action vocabulary until the executor can ground and verify
  * more powerful primitives safely. In particular, raw coordinate taps are brittle and approved
  * shell commands are privileged; neither may be introduced autonomously by planner output.
+ *
+ * Reasoning proposals are also limited to a single state-changing action per inspected UI state.
+ * A second mutation must be derived from a fresh observation and a newly admitted proposal. This
+ * closes the stale-mid-plan gap where the first action changes the screen and later actions still
+ * execute from assumptions made against the old UI.
  */
 object ReasoningPlanPolicy {
     data class Decision(val allowed: Boolean, val reason: String)
 
+    const val MAX_STATE_CHANGING_ACTIONS = 1
+
     fun evaluate(actions: List<AgentAction>): Decision {
+        var stateChangingActions = 0
+
         actions.forEachIndexed { index, action ->
             val problem = when (action) {
                 is AgentAction.Tap -> "raw coordinate taps are not admitted from reasoning output"
@@ -19,8 +28,23 @@ object ReasoningPlanPolicy {
                 else -> null
             }
             if (problem != null) return Decision(false, "Step ${index + 1}: $problem")
+
+            if (isStateChanging(action)) {
+                stateChangingActions += 1
+                if (stateChangingActions > MAX_STATE_CHANGING_ACTIONS) {
+                    return Decision(
+                        false,
+                        "Step ${index + 1}: reasoning plans may perform only $MAX_STATE_CHANGING_ACTIONS state-changing action per observation; re-inspect and replan before the next mutation",
+                    )
+                }
+            }
         }
 
-        return Decision(true, "Reasoning plan stays inside the autonomous action vocabulary")
+        return Decision(true, "Reasoning plan stays inside the autonomous vocabulary and one-mutation observation horizon")
+    }
+
+    internal fun isStateChanging(action: AgentAction): Boolean = when (action) {
+        AgentAction.InspectScreen -> false
+        else -> true
     }
 }
