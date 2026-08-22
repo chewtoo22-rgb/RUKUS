@@ -7,10 +7,8 @@ package com.ruckus.agent.core
  * inspected UI proves that exactly one enabled, editable, non-sensitive input owns input focus.
  * Scroll actions are also target-sensitive: exactly one explicitly enabled, scrollable accessibility
  * node must be present so the planner cannot guess which container should receive the gesture.
- * This keeps a planner from inventing interaction affordances, targeting disabled controls,
- * guessing between duplicate controls, ambiguous typing contexts or scroll containers,
- * autonomously writing into secrets, or issuing blind scroll gestures against a UI that does not
- * expose a unique scrollable target.
+ * App launches require an exact match in the trusted launchable-app inventory captured by the
+ * controller during inspection. App-name launches require one unique exact normalized label match.
  */
 object ReasoningGroundingPolicy {
     data class Decision(val allowed: Boolean, val reason: String)
@@ -26,6 +24,8 @@ object ReasoningGroundingPolicy {
         val focusedSensitiveCount = focusedSensitiveNodeCount(normalized)
         val focusedNonSensitiveCount = focusedNonSensitiveNodeCount(normalized)
         val enabledScrollableCount = enabledScrollableNodeCount(normalized)
+        val launchablePackages = launchablePackageCounts(normalized)
+        val launchableLabels = launchableLabelPackages(normalized)
 
         actions.forEachIndexed { index, action ->
             when (action) {
@@ -74,10 +74,30 @@ object ReasoningGroundingPolicy {
                         return Decision(false, "Reasoning action ${index + 1} cannot scroll because $enabledScrollableCount enabled scrollable containers make the target ambiguous")
                     }
                 }
+                is AgentAction.OpenApp -> {
+                    val target = normalizePackage(action.packageName)
+                    val matches = launchablePackages[target] ?: 0
+                    if (target.isEmpty() || matches == 0) {
+                        return Decision(false, "Reasoning action ${index + 1} cannot launch '${action.packageName}' because the trusted launchable-app inventory does not contain that package")
+                    }
+                    if (matches != 1) {
+                        return Decision(false, "Reasoning action ${index + 1} cannot launch '${action.packageName}' because the trusted launchable-app inventory is ambiguous")
+                    }
+                }
+                is AgentAction.OpenAppByName -> {
+                    val target = normalizeLabel(action.appName)
+                    val packages = launchableLabels[target].orEmpty()
+                    if (target.isEmpty() || packages.isEmpty()) {
+                        return Decision(false, "Reasoning action ${index + 1} cannot launch '${action.appName}' because the trusted launchable-app inventory does not contain that exact app label")
+                    }
+                    if (packages.size != 1) {
+                        return Decision(false, "Reasoning action ${index + 1} cannot launch '${action.appName}' because ${packages.size} launchable apps share that label")
+                    }
+                }
                 else -> Unit
             }
         }
-        return Decision(true, "Semantic actions are grounded in proven enabled accessibility affordances; text entry is uniquely focused and non-sensitive, and scrolls require one unique enabled scrollable container")
+        return Decision(true, "Reasoning actions are grounded in current accessibility state or the trusted launchable-app inventory")
     }
 
     internal fun visibleLabels(observation: String): Set<String> = nodeTokens(observation)
@@ -124,13 +144,49 @@ object ReasoningGroundingPolicy {
         hasFlag(token, "enabled", true) && hasFlag(token, "scrollable", true)
     }
 
-    private fun nodeTokens(observation: String): Sequence<String> {
-        val body = observation.substringAfter('|', observation.substringAfter('\n', ""))
-        return body.split('•', '\n').asSequence().map(String::trim).filter { it.startsWith("node[") }
+    internal fun launchablePackageCounts(observation: String): Map<String, Int> = appTokens(observation)
+        .mapNotNull(::appPackage)
+        .map(::normalizePackage)
+        .filter(String::isNotEmpty)
+        .groupingBy { it }
+        .eachCount()
+
+    internal fun launchableLabelPackages(observation: String): Map<String, Set<String>> {
+        val pairs = appTokens(observation).mapNotNull { token ->
+            val label = appLabel(token)?.let(::normalizeLabel)?.takeIf(String::isNotEmpty) ?: return@mapNotNull null
+            val pkg = appPackage(token)?.let(::normalizePackage)?.takeIf(String::isNotEmpty) ?: return@mapNotNull null
+            label to pkg
+        }.toList()
+        return pairs.groupBy({ it.first }, { it.second }).mapValues { (_, packages) -> packages.toSet() }
     }
+
+    private fun bodyTokens(observation: String): Sequence<String> {
+        val body = observation.substringAfter('|', observation.substringAfter('\n', ""))
+        return body.split('•', '\n').asSequence().map(String::trim)
+    }
+
+    private fun nodeTokens(observation: String): Sequence<String> = bodyTokens(observation)
+        .filter { it.startsWith("node[") }
+
+    private fun appTokens(observation: String): Sequence<String> = bodyTokens(observation)
+        .filter { it.startsWith("app[") }
 
     private fun nodeLabel(token: String): String? {
         val encoded = token.removePrefix("node[").substringBefore(";clickable=").substringAfter("text=", "")
+        return decodeValue(encoded)
+    }
+
+    private fun appPackage(token: String): String? {
+        val encoded = token.removePrefix("app[").substringBefore(";label=").substringAfter("package=", "")
+        return decodeValue(encoded)
+    }
+
+    private fun appLabel(token: String): String? {
+        val encoded = token.substringAfter(";label=", "").removeSuffix("]")
+        return decodeValue(encoded)
+    }
+
+    private fun decodeValue(encoded: String): String? {
         if (encoded.isBlank()) return null
         return encoded.replace("\\;", ";").replace("\\]", "]").replace("\\\\", "\\")
     }
@@ -141,4 +197,5 @@ object ReasoningGroundingPolicy {
     }
 
     internal fun normalizeLabel(value: String): String = value.trim().lowercase().replace(Regex("\\s+"), " ")
+    internal fun normalizePackage(value: String): String = value.trim().lowercase()
 }
