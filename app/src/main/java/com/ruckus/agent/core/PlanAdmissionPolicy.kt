@@ -36,6 +36,7 @@ object PlanAdmissionPolicy {
             else -> null
         }
         is AgentAction.OpenAppByName -> validateTarget("app name", action.appName)
+        is AgentAction.Tap -> validatePoint("tap", action.x, action.y)
         is AgentAction.TapLabel -> validateTarget("tap label", action.label)
         is AgentAction.TypeText -> when {
             action.text.isEmpty() -> "text payload is empty"
@@ -44,7 +45,13 @@ object PlanAdmissionPolicy {
         }
         is AgentAction.SetBrightness -> if (action.percent !in 0..100) "brightness is outside 0..100" else null
         is AgentAction.SetMediaVolume -> if (action.percent !in 0..100) "media volume is outside 0..100" else null
-        is AgentAction.Swipe -> if (action.durationMs !in 1..5000) "swipe duration is outside 1..5000 ms" else null
+        is AgentAction.Swipe -> when {
+            action.durationMs !in 1..5000 -> "swipe duration is outside 1..5000 ms"
+            validatePoint("swipe start", action.x1, action.y1) != null -> validatePoint("swipe start", action.x1, action.y1)
+            validatePoint("swipe end", action.x2, action.y2) != null -> validatePoint("swipe end", action.x2, action.y2)
+            action.x1 == action.x2 && action.y1 == action.y2 -> "swipe start and end points are identical"
+            else -> null
+        }
         is AgentAction.RunApprovedShell -> when {
             action.commandId.isBlank() -> "approved shell command id is blank"
             action.commandId.length > MAX_TEXT_LENGTH -> "approved shell command id is too long"
@@ -53,6 +60,12 @@ object PlanAdmissionPolicy {
                 "approved shell command contains an invalid argument"
             else -> null
         }
+        else -> null
+    }
+
+    private fun validatePoint(name: String, x: Float, y: Float): String? = when {
+        !x.isFinite() || !y.isFinite() -> "$name coordinates are not finite"
+        x < 0f || y < 0f -> "$name coordinates are negative"
         else -> null
     }
 
