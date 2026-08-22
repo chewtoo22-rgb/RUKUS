@@ -59,4 +59,55 @@ class ActionVerifierSemanticEffectTest {
         assertTrue(tap.ok)
         assertTrue(swipe.ok)
     }
+
+    @Test
+    fun type_text_requires_requested_text_to_newly_appear() {
+        val beforeTyping = "pkg=com.example.app | node[text=Message;editable=true;focused=true;enabled=true;sensitive=false]"
+        val afterTyping = "pkg=com.example.app | node[text=Hello Miyagi;editable=true;focused=true;enabled=true;sensitive=false]"
+
+        val verified = ActionVerifier.verify(
+            AgentAction.TypeText("Hello Miyagi"),
+            beforeTyping,
+            afterTyping,
+            "Text set",
+        )
+
+        assertTrue(verified.ok)
+    }
+
+    @Test
+    fun type_text_rejects_preexisting_matching_text_even_with_adapter_success() {
+        val preexisting = "pkg=com.example.app | node[text=Hello Miyagi;editable=true;focused=true;enabled=true;sensitive=false]"
+        val changedElsewhere = "$preexisting | node[text=Other UI changed;clickable=false;enabled=true]"
+
+        val unchanged = ActionVerifier.verify(
+            AgentAction.TypeText("Hello Miyagi"),
+            preexisting,
+            preexisting,
+            "Text set",
+        )
+        val unrelatedChange = ActionVerifier.verify(
+            AgentAction.TypeText("Hello Miyagi"),
+            preexisting,
+            changedElsewhere,
+            "Text set",
+        )
+
+        assertFalse(unchanged.ok)
+        assertFalse(unrelatedChange.ok)
+    }
+
+    @Test
+    fun type_text_rejects_adapter_ack_without_observable_requested_text() {
+        val afterUnrelatedChange = "pkg=com.example.app | node[text=Different value;editable=true;focused=true;enabled=true;sensitive=false]"
+
+        val result = ActionVerifier.verify(
+            AgentAction.TypeText("Hello Miyagi"),
+            before,
+            afterUnrelatedChange,
+            "Text set",
+        )
+
+        assertFalse(result.ok)
+    }
 }
