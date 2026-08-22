@@ -6,8 +6,9 @@ package com.ruckus.agent.core
  * Deterministic/manual execution paths keep their existing capabilities. A reasoning planner,
  * however, must stay inside a narrower action vocabulary until the executor can ground and verify
  * more powerful primitives safely. Raw coordinate taps and approved shell commands are excluded.
- * App launches are also excluded until planner observations include a trusted installed-app
- * inventory: a model-supplied package or app name is not grounded by the current UI snapshot.
+ * App launches are admitted only through ReasoningGroundingPolicy, which requires the exact target
+ * to exist in the trusted launchable-app inventory embedded by DeviceController in the inspected
+ * observation. Model-supplied package names or labels therefore cannot authorize themselves.
  *
  * Reasoning proposals are also limited to a single state-changing action per inspected UI state.
  * A second mutation must be derived from a fresh observation and a newly admitted proposal. This
@@ -26,8 +27,6 @@ object ReasoningPlanPolicy {
             val problem = when (action) {
                 is AgentAction.Tap -> "raw coordinate taps are not admitted from reasoning output"
                 is AgentAction.RunApprovedShell -> "privileged shell actions are not admitted from reasoning output"
-                is AgentAction.OpenApp -> "app launches are not admitted from reasoning output until the package is grounded in a trusted installed-app inventory"
-                is AgentAction.OpenAppByName -> "app launches are not admitted from reasoning output until the app name is grounded in a trusted installed-app inventory"
                 else -> null
             }
             if (problem != null) return Decision(false, "Step ${index + 1}: $problem")
