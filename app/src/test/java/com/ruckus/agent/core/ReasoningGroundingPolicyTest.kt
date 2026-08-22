@@ -24,6 +24,35 @@ class ReasoningGroundingPolicyTest {
     }
 
     @Test
+    fun duplicate_clickable_semantic_targets_are_rejected_as_ambiguous() {
+        val decision = ReasoningGroundingPolicy.evaluate(
+            listOf(AgentAction.TapLabel("Continue")),
+            "pkg=com.example.app | node[text=Continue;clickable=true;editable=false;sensitive=false;focused=false] • node[text=Continue;clickable=true;editable=false;sensitive=false;focused=false]",
+        )
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("ambiguous", ignoreCase = true))
+    }
+
+    @Test
+    fun one_clickable_and_one_non_clickable_duplicate_label_remains_unambiguous() {
+        val decision = ReasoningGroundingPolicy.evaluate(
+            listOf(AgentAction.TapLabel("Continue")),
+            "pkg=com.example.app | node[text=Continue;clickable=false;editable=false;sensitive=false;focused=false] • node[text=Continue;clickable=true;editable=false;sensitive=false;focused=false]",
+        )
+        assertTrue(decision.allowed)
+    }
+
+    @Test
+    fun duplicate_target_matching_uses_normalized_labels() {
+        val decision = ReasoningGroundingPolicy.evaluate(
+            listOf(AgentAction.TapLabel(" CONTINUE  NOW ")),
+            "pkg=com.example.app | node[text=Continue now;clickable=true;editable=false;sensitive=false;focused=false] • node[text=  CONTINUE   NOW ;clickable=true;editable=false;sensitive=false;focused=false]",
+        )
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("ambiguous", ignoreCase = true))
+    }
+
+    @Test
     fun hallucinated_semantic_target_is_rejected() {
         val decision = ReasoningGroundingPolicy.evaluate(
             listOf(AgentAction.TapLabel("Buy now")),
