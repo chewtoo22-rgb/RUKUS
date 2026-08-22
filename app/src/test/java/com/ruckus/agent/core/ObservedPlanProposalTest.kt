@@ -70,7 +70,9 @@ class ObservedPlanProposalTest {
             observation = screen,
             nowEpochMs = 1_000L,
         ).getOrThrow()
-        val tampered = proposal.copy(actions = listOf(AgentAction.Home))
+        // Mutate to another action that still passes admission/reasoning/grounding so this test
+        // reaches the proposal-integrity fingerprint check instead of failing at an earlier gate.
+        val tampered = proposal.copy(actions = listOf(AgentAction.InspectScreen))
 
         val decision = ObservedPlanFreshnessGate.evaluate(tampered, screen, nowEpochMs = 1_500L)
 
