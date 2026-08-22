@@ -8,5 +8,6 @@ data class UiNodeSnapshot(
     val className: String?,
     val clickable: Boolean,
     val editable: Boolean,
+    val sensitive: Boolean,
     val focused: Boolean,
 )
