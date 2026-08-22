@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ObservedPlanProposalTest {
-    private val screen = "pkg=com.example.app | node[text=Continue;clickable=true;editable=false;sensitive=false;focused=false]"
+    private val screen = "pkg=com.example.app | node[text=Continue;clickable=true;enabled=true;editable=false;sensitive=false;focused=false]"
 
     @Test
     fun proposal_is_admitted_and_bound_to_same_observation() {
@@ -31,7 +31,7 @@ class ObservedPlanProposalTest {
 
         val decision = ObservedPlanFreshnessGate.evaluate(
             proposal,
-            "pkg=com.example.app | node[text=Confirm purchase;clickable=true;editable=false;sensitive=false;focused=false]",
+            "pkg=com.example.app | node[text=Confirm purchase;clickable=true;enabled=true;editable=false;sensitive=false;focused=false]",
             nowEpochMs = 1_500L,
         )
         assertFalse(decision.allowed)
