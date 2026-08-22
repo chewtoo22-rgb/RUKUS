@@ -62,7 +62,7 @@ class DeviceController(private val context: Context) {
                 val label = node.text?.trim()?.takeIf { it.isNotBlank() }
                     ?: node.contentDescription?.trim()?.takeIf { it.isNotBlank() }
                     ?: ""
-                "node[text=${escapeObservation(label)};clickable=${node.clickable};editable=${node.editable};focused=${node.focused}]"
+                "node[text=${escapeObservation(label)};clickable=${node.clickable};editable=${node.editable};sensitive=${node.sensitive};focused=${node.focused}]"
             }
             .distinct()
             .take(16)
