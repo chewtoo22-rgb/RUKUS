@@ -18,6 +18,7 @@ object AccessibilitySelectors {
                 editable = node.isEditable,
                 sensitive = node.isPassword,
                 focused = node.isFocused,
+                scrollable = node.isScrollable,
             )
             for (i in 0 until node.childCount) node.getChild(i)?.let(::walk)
         }
