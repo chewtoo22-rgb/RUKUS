@@ -18,7 +18,7 @@ class ReasoningGroundingPolicyTest {
     fun structured_visible_semantic_target_is_allowed() {
         val decision = ReasoningGroundingPolicy.evaluate(
             listOf(AgentAction.TapLabel("Continue")),
-            "pkg=com.example.app | node[text=Cancel;clickable=true;editable=false;focused=false] • node[text=Continue;clickable=true;editable=false;focused=false]",
+            "pkg=com.example.app | node[text=Cancel;clickable=true;editable=false;sensitive=false;focused=false] • node[text=Continue;clickable=true;editable=false;sensitive=false;focused=false]",
         )
         assertTrue(decision.allowed)
     }
@@ -52,25 +52,44 @@ class ReasoningGroundingPolicyTest {
     }
 
     @Test
-    fun typing_requires_a_focused_editable_node() {
+    fun typing_requires_a_focused_editable_non_sensitive_node() {
         val allowed = ReasoningGroundingPolicy.evaluate(
             listOf(AgentAction.TypeText("hello")),
-            "pkg=com.example.app | node[text=Message;clickable=true;editable=true;focused=true]",
+            "pkg=com.example.app | node[text=Message;clickable=true;editable=true;sensitive=false;focused=true]",
         )
         assertTrue(allowed.allowed)
 
         val notFocused = ReasoningGroundingPolicy.evaluate(
             listOf(AgentAction.TypeText("hello")),
-            "pkg=com.example.app | node[text=Message;clickable=true;editable=true;focused=false]",
+            "pkg=com.example.app | node[text=Message;clickable=true;editable=true;sensitive=false;focused=false]",
         )
         assertFalse(notFocused.allowed)
         assertTrue(notFocused.reason.contains("focused editable", ignoreCase = true))
 
         val notEditable = ReasoningGroundingPolicy.evaluate(
             listOf(AgentAction.TypeText("hello")),
-            "pkg=com.example.app | node[text=Message;clickable=true;editable=false;focused=true]",
+            "pkg=com.example.app | node[text=Message;clickable=true;editable=false;sensitive=false;focused=true]",
         )
         assertFalse(notEditable.allowed)
+    }
+
+    @Test
+    fun autonomous_typing_into_sensitive_field_is_rejected() {
+        val decision = ReasoningGroundingPolicy.evaluate(
+            listOf(AgentAction.TypeText("super-secret")),
+            "pkg=com.example.app | node[text=Password;clickable=true;editable=true;sensitive=true;focused=true]",
+        )
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("sensitive", ignoreCase = true))
+    }
+
+    @Test
+    fun missing_sensitivity_metadata_fails_closed_for_autonomous_typing() {
+        val decision = ReasoningGroundingPolicy.evaluate(
+            listOf(AgentAction.TypeText("hello")),
+            "pkg=com.example.app | node[text=Message;clickable=true;editable=true;focused=true]",
+        )
+        assertFalse(decision.allowed)
     }
 
     @Test
