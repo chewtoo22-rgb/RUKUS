@@ -6,16 +6,7 @@ import org.junit.Test
 
 class ReasoningGroundingPolicyTest {
     @Test
-    fun visible_semantic_target_is_allowed() {
-        val decision = ReasoningGroundingPolicy.evaluate(
-            listOf(AgentAction.TapLabel("Continue")),
-            "pkg=com.example.app | Cancel • Continue • Help",
-        )
-        assertTrue(decision.allowed)
-    }
-
-    @Test
-    fun structured_visible_semantic_target_is_allowed() {
+    fun structured_visible_clickable_semantic_target_is_allowed() {
         val decision = ReasoningGroundingPolicy.evaluate(
             listOf(AgentAction.TapLabel("Continue")),
             "pkg=com.example.app | node[text=Cancel;clickable=true;editable=false;sensitive=false;focused=false] • node[text=Continue;clickable=true;editable=false;sensitive=false;focused=false]",
@@ -27,7 +18,7 @@ class ReasoningGroundingPolicyTest {
     fun target_matching_is_case_and_whitespace_tolerant() {
         val decision = ReasoningGroundingPolicy.evaluate(
             listOf(AgentAction.TapLabel("  CONTINUE   NOW ")),
-            "pkg=com.example.app\ntext=Continue now",
+            "pkg=com.example.app | node[text=Continue now;clickable=true;editable=false;sensitive=false;focused=false]",
         )
         assertTrue(decision.allowed)
     }
@@ -36,10 +27,29 @@ class ReasoningGroundingPolicyTest {
     fun hallucinated_semantic_target_is_rejected() {
         val decision = ReasoningGroundingPolicy.evaluate(
             listOf(AgentAction.TapLabel("Buy now")),
-            "pkg=com.example.app | Cancel • Continue • Help",
+            "pkg=com.example.app | node[text=Cancel;clickable=true;editable=false;sensitive=false;focused=false] • node[text=Continue;clickable=true;editable=false;sensitive=false;focused=false]",
         )
         assertFalse(decision.allowed)
         assertTrue(decision.reason.contains("not visible", ignoreCase = true))
+    }
+
+    @Test
+    fun visible_but_non_clickable_target_is_rejected() {
+        val decision = ReasoningGroundingPolicy.evaluate(
+            listOf(AgentAction.TapLabel("Continue")),
+            "pkg=com.example.app | node[text=Continue;clickable=false;editable=false;sensitive=false;focused=false]",
+        )
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("clickable", ignoreCase = true))
+    }
+
+    @Test
+    fun legacy_unstructured_observation_cannot_authorize_autonomous_tap() {
+        val decision = ReasoningGroundingPolicy.evaluate(
+            listOf(AgentAction.TapLabel("Continue")),
+            "pkg=com.example.app | Cancel • Continue • Help",
+        )
+        assertFalse(decision.allowed)
     }
 
     @Test
