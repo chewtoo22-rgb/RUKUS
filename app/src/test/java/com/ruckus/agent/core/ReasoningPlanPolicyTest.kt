@@ -51,6 +51,16 @@ class ReasoningPlanPolicyTest {
     }
 
     @Test
+    fun raw_coordinate_swipe_is_not_admitted_from_reasoning_output() {
+        val decision = ReasoningPlanPolicy.evaluate(
+            listOf(AgentAction.Swipe(100f, 800f, 100f, 200f, 350L))
+        )
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("swipe", ignoreCase = true))
+        assertTrue(decision.reason.contains("semantic scrolling", ignoreCase = true))
+    }
+
+    @Test
     fun privileged_shell_is_not_admitted_from_reasoning_output() {
         val decision = ReasoningPlanPolicy.evaluate(listOf(AgentAction.RunApprovedShell("demo")))
         assertFalse(decision.allowed)
@@ -132,6 +142,18 @@ class ReasoningPlanPolicyTest {
         )
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("coordinate", ignoreCase = true))
+    }
+
+    @Test
+    fun observed_proposal_refuses_raw_coordinate_swipe_before_fingerprinting() {
+        val result = ObservedPlanProposal.create(
+            goal = "Swipe the screen",
+            actions = listOf(AgentAction.Swipe(100f, 800f, 100f, 200f, 350L)),
+            observation = screen,
+            nowEpochMs = 1_000L,
+        )
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("swipe", ignoreCase = true))
     }
 
     @Test
