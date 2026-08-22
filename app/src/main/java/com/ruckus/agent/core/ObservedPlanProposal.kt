@@ -48,7 +48,25 @@ data class ObservedPlanProposal(
             if (!grounding.allowed) {
                 return Result.failure(IllegalArgumentException(grounding.reason))
             }
-            val plan = CommandPlanner.Plan(admittedActions, emptyList())
+
+            // Resolve human-readable app labels to the exact package proven by the inspected
+            // launchable-app inventory. This removes a late runtime name lookup from autonomous
+            // execution, so the admitted proposal cannot drift to a different similarly named app.
+            val canonicalActions = canonicalizeGroundedActions(admittedActions, normalizedObservation)
+            val canonicalAdmission = PlanAdmissionPolicy.evaluate(canonicalActions)
+            if (!canonicalAdmission.allowed) {
+                return Result.failure(IllegalArgumentException(canonicalAdmission.reason))
+            }
+            val canonicalReasoningAdmission = ReasoningPlanPolicy.evaluate(canonicalActions)
+            if (!canonicalReasoningAdmission.allowed) {
+                return Result.failure(IllegalArgumentException(canonicalReasoningAdmission.reason))
+            }
+            val canonicalGrounding = ReasoningGroundingPolicy.evaluate(canonicalActions, normalizedObservation)
+            if (!canonicalGrounding.allowed) {
+                return Result.failure(IllegalArgumentException(canonicalGrounding.reason))
+            }
+
+            val plan = CommandPlanner.Plan(canonicalActions, emptyList())
             val observationFingerprint = fingerprint(normalizedObservation)
             val planFingerprint = PlanFingerprint.of(plan)
             val proposalFingerprint = proposalFingerprint(
@@ -61,13 +79,29 @@ data class ObservedPlanProposal(
             return Result.success(
                 ObservedPlanProposal(
                     goal = cleanGoal,
-                    actions = admittedActions,
+                    actions = canonicalActions,
                     observationFingerprint = observationFingerprint,
                     planFingerprint = planFingerprint,
                     issuedAtEpochMs = nowEpochMs,
                     proposalFingerprint = proposalFingerprint,
                 )
             )
+        }
+
+        internal fun canonicalizeGroundedActions(
+            actions: List<AgentAction>,
+            normalizedObservation: String,
+        ): List<AgentAction> {
+            val launchableLabels = ReasoningGroundingPolicy.launchableLabelPackages(normalizedObservation)
+            return actions.map { action ->
+                if (action is AgentAction.OpenAppByName) {
+                    val label = ReasoningGroundingPolicy.normalizeLabel(action.appName)
+                    val packages = launchableLabels[label].orEmpty()
+                    if (packages.size == 1) AgentAction.OpenApp(packages.single()) else action
+                } else {
+                    action
+                }
+            }
         }
 
         internal fun normalizeObservation(observation: String?): String? {
