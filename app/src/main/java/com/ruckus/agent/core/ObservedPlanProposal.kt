@@ -136,13 +136,14 @@ data class ObservedPlanProposal(
 }
 
 /**
- * Deterministically binds device-wide setting and system-navigation mutations to explicit user
- * intent in the goal.
+ * Deterministically binds mutations that cannot be authorized by UI structure alone to explicit
+ * user intent in the goal.
  *
  * Brightness and media-volume changes do not have a UI target that ReasoningGroundingPolicy can
- * prove. Likewise, Back and Home are global navigation primitives rather than semantic controls in
- * the inspected node tree. A reasoning planner may therefore use these actions only when the goal
- * contains an unambiguous request for that exact operation.
+ * prove. Back and Home are global navigation primitives rather than semantic controls in the
+ * inspected node tree. TypeText is structurally grounded to a safe focused field, but the field
+ * itself cannot prove what content the user intended to enter. A reasoning planner may therefore
+ * use these actions only when the goal explicitly authorizes the exact operation/content.
  */
 object ReasoningIntentBindingPolicy {
     data class Decision(val allowed: Boolean, val reason: String)
@@ -155,6 +156,7 @@ object ReasoningIntentBindingPolicy {
                 is AgentAction.SetBrightness -> requestedSettingValues(goal, "brightness")
                     .contains(action.percent)
                 is AgentAction.SetMediaVolume -> requestedVolumeValues(goal).contains(action.percent)
+                is AgentAction.TypeText -> requestsExactText(goal, action.text)
                 AgentAction.Back -> requestsBackNavigation(goal)
                 AgentAction.Home -> requestsHomeNavigation(goal)
                 else -> true
@@ -164,6 +166,7 @@ object ReasoningIntentBindingPolicy {
                 val requirement = when (action) {
                     is AgentAction.SetBrightness -> "brightness changes require the goal to explicitly request the exact target value"
                     is AgentAction.SetMediaVolume -> "media volume changes require the goal to explicitly request the exact target value"
+                    is AgentAction.TypeText -> "text entry requires the exact text payload to appear in the user goal"
                     AgentAction.Back -> "Back navigation requires an explicit request to go back or return to the previous screen"
                     AgentAction.Home -> "Home navigation requires an explicit request to go to or return to the Home screen"
                     else -> "action requires explicit goal intent"
@@ -172,7 +175,12 @@ object ReasoningIntentBindingPolicy {
             }
         }
 
-        return Decision(true, "Global mutations are explicitly bound to the user goal")
+        return Decision(true, "Mutations are explicitly bound to the user goal")
+    }
+
+    internal fun requestsExactText(goal: String, text: String): Boolean {
+        if (text.isBlank()) return false
+        return goal.contains(text)
     }
 
     internal fun requestsBackNavigation(goal: String): Boolean {
