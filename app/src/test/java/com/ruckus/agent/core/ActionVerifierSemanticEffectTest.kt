@@ -110,4 +110,69 @@ class ActionVerifierSemanticEffectTest {
 
         assertFalse(result.ok)
     }
+
+    @Test
+    fun brightness_requires_observed_requested_raw_value() {
+        val action = AgentAction.SetBrightness(42)
+        val expectedRaw = (42 * 255 / 100).coerceIn(1,255)
+        val verified = ActionVerifier.verify(
+            action,
+            before,
+            "pkg=com.example.app | state[brightness=$expectedRaw;media=4;mediaMax=15]",
+            "Brightness 42%",
+        )
+        val mismatch = ActionVerifier.verify(
+            action,
+            before,
+            "pkg=com.example.app | state[brightness=${expectedRaw + 1};media=4;mediaMax=15]",
+            "Brightness 42%",
+        )
+
+        assertTrue(verified.ok)
+        assertFalse(mismatch.ok)
+    }
+
+    @Test
+    fun brightness_rejects_adapter_ack_without_observed_state() {
+        val result = ActionVerifier.verify(
+            AgentAction.SetBrightness(42),
+            before,
+            changed,
+            "Brightness 42%",
+        )
+
+        assertFalse(result.ok)
+    }
+
+    @Test
+    fun media_volume_verifies_quantized_stream_value() {
+        val action = AgentAction.SetMediaVolume(30)
+        val verified = ActionVerifier.verify(
+            action,
+            before,
+            "pkg=com.example.app | state[brightness=120;media=4;mediaMax=15]",
+            "Media 30%",
+        )
+        val mismatch = ActionVerifier.verify(
+            action,
+            before,
+            "pkg=com.example.app | state[brightness=120;media=5;mediaMax=15]",
+            "Media 30%",
+        )
+
+        assertTrue(verified.ok)
+        assertFalse(mismatch.ok)
+    }
+
+    @Test
+    fun media_volume_rejects_missing_observed_maximum() {
+        val result = ActionVerifier.verify(
+            AgentAction.SetMediaVolume(30),
+            before,
+            "pkg=com.example.app | state[brightness=120;media=4]",
+            "Media 30%",
+        )
+
+        assertFalse(result.ok)
+    }
 }
