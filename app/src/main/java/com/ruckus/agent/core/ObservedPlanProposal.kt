@@ -44,6 +44,10 @@ data class ObservedPlanProposal(
             if (!reasoningAdmission.allowed) {
                 return Result.failure(IllegalArgumentException(reasoningAdmission.reason))
             }
+            val intentBinding = ReasoningIntentBindingPolicy.evaluate(cleanGoal, admittedActions)
+            if (!intentBinding.allowed) {
+                return Result.failure(IllegalArgumentException(intentBinding.reason))
+            }
             val grounding = ReasoningGroundingPolicy.evaluate(admittedActions, normalizedObservation)
             if (!grounding.allowed) {
                 return Result.failure(IllegalArgumentException(grounding.reason))
@@ -60,6 +64,10 @@ data class ObservedPlanProposal(
             val canonicalReasoningAdmission = ReasoningPlanPolicy.evaluate(canonicalActions)
             if (!canonicalReasoningAdmission.allowed) {
                 return Result.failure(IllegalArgumentException(canonicalReasoningAdmission.reason))
+            }
+            val canonicalIntentBinding = ReasoningIntentBindingPolicy.evaluate(cleanGoal, canonicalActions)
+            if (!canonicalIntentBinding.allowed) {
+                return Result.failure(IllegalArgumentException(canonicalIntentBinding.reason))
             }
             val canonicalGrounding = ReasoningGroundingPolicy.evaluate(canonicalActions, normalizedObservation)
             if (!canonicalGrounding.allowed) {
@@ -127,6 +135,74 @@ data class ObservedPlanProposal(
     }
 }
 
+/**
+ * Deterministically binds device-wide setting mutations to explicit user intent in the goal.
+ *
+ * Brightness and media-volume changes do not have a UI target that ReasoningGroundingPolicy can
+ * prove. A reasoning planner therefore may not introduce or alter them as an incidental step. The
+ * goal must explicitly name the setting and the exact requested percentage. A few unambiguous
+ * natural-language aliases (mute/max/full/minimum) are mapped to their deterministic endpoints.
+ */
+object ReasoningIntentBindingPolicy {
+    data class Decision(val allowed: Boolean, val reason: String)
+
+    private const val MAX_SETTING_NUMBER_DISTANCE = 32
+
+    fun evaluate(goal: String, actions: List<AgentAction>): Decision {
+        actions.forEachIndexed { index, action ->
+            val allowed = when (action) {
+                is AgentAction.SetBrightness -> requestedSettingValues(goal, "brightness")
+                    .contains(action.percent)
+                is AgentAction.SetMediaVolume -> requestedVolumeValues(goal).contains(action.percent)
+                else -> true
+            }
+
+            if (!allowed) {
+                val setting = when (action) {
+                    is AgentAction.SetBrightness -> "brightness"
+                    is AgentAction.SetMediaVolume -> "media volume"
+                    else -> "setting"
+                }
+                return Decision(
+                    false,
+                    "Step ${index + 1}: autonomous $setting changes require the goal to explicitly request the exact target value",
+                )
+            }
+        }
+
+        return Decision(true, "Device-wide setting mutations are explicitly bound to the user goal")
+    }
+
+    internal fun requestedSettingValues(goal: String, keyword: String): Set<Int> {
+        val normalized = goal.lowercase()
+        val values = mutableSetOf<Int>()
+        val escapedKeyword = Regex.escape(keyword.lowercase())
+        val after = Regex("\\b$escapedKeyword\\b[^0-9]{0,$MAX_SETTING_NUMBER_DISTANCE}(\\d{1,3})\\s*(?:%|percent\\b)?")
+        val before = Regex("(\\d{1,3})\\s*(?:%|percent\\b)?[^a-z0-9]{0,$MAX_SETTING_NUMBER_DISTANCE}\\b$escapedKeyword\\b")
+
+        after.findAll(normalized).forEach { match ->
+            match.groupValues[1].toIntOrNull()?.takeIf { it in 0..100 }?.let(values::add)
+        }
+        before.findAll(normalized).forEach { match ->
+            match.groupValues[1].toIntOrNull()?.takeIf { it in 0..100 }?.let(values::add)
+        }
+
+        if (keyword == "brightness") {
+            if (Regex("\\b(?:full|maximum|max)\\s+brightness\\b|\\bbrightness\\s+(?:full|maximum|max)\\b").containsMatchIn(normalized)) values += 100
+            if (Regex("\\b(?:minimum|min)\\s+brightness\\b|\\bbrightness\\s+(?:minimum|min)\\b").containsMatchIn(normalized)) values += 0
+        }
+        return values
+    }
+
+    internal fun requestedVolumeValues(goal: String): Set<Int> {
+        val normalized = goal.lowercase()
+        val values = requestedSettingValues(normalized, "volume").toMutableSet()
+        if (Regex("\\b(?:mute|muted|silence|silent)\\b").containsMatchIn(normalized)) values += 0
+        if (Regex("\\b(?:full|maximum|max)\\s+(?:media\\s+)?volume\\b|\\b(?:media\\s+)?volume\\s+(?:full|maximum|max)\\b").containsMatchIn(normalized)) values += 100
+        return values
+    }
+}
+
 object ObservedPlanFreshnessGate {
     data class Decision(val allowed: Boolean, val reason: String)
 
@@ -167,6 +243,10 @@ object ObservedPlanFreshnessGate {
         if (!reasoningAdmission.allowed) {
             return Decision(false, "Proposed plan no longer passes reasoning admission: ${reasoningAdmission.reason}")
         }
+        val intentBinding = ReasoningIntentBindingPolicy.evaluate(proposal.goal, proposal.actions)
+        if (!intentBinding.allowed) {
+            return Decision(false, "Proposed plan no longer matches explicit goal intent: ${intentBinding.reason}")
+        }
         val grounding = ReasoningGroundingPolicy.evaluate(proposal.actions, normalized)
         if (!grounding.allowed) {
             return Decision(false, "Proposed plan no longer passes UI grounding: ${grounding.reason}")
@@ -176,6 +256,6 @@ object ObservedPlanFreshnessGate {
             return Decision(false, "Proposed actions changed after admission; discard and replan")
         }
 
-        return Decision(true, "Plan is intact, grounded, short-lived, and bound to the current UI observation")
+        return Decision(true, "Plan is intact, grounded, goal-bound, short-lived, and bound to the current UI observation")
     }
 }
