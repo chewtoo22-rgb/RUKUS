@@ -2,11 +2,11 @@ package com.ruckus.agent.core
 
 /**
  * Requires autonomous semantic actions to be grounded in the observation that produced the plan.
- * Tap targets must be visible, explicitly clickable, and unambiguous in the structured UI
- * snapshot. Text entry is stricter: a reasoning proposal may type only when the inspected UI
- * proves that an editable, non-sensitive input currently owns input focus. This keeps a planner
- * from inventing interaction affordances, guessing between duplicate controls, typing context,
- * or autonomously writing into password/secret fields.
+ * Tap targets must be visible, explicitly clickable, explicitly enabled, and unambiguous in the
+ * structured UI snapshot. Text entry is stricter: a reasoning proposal may type only when the
+ * inspected UI proves that an enabled, editable, non-sensitive input currently owns input focus.
+ * This keeps a planner from inventing interaction affordances, targeting disabled controls,
+ * guessing between duplicate controls, typing context, or autonomously writing into secrets.
  */
 object ReasoningGroundingPolicy {
     data class Decision(val allowed: Boolean, val reason: String)
@@ -16,7 +16,9 @@ object ReasoningGroundingPolicy {
             ?: return Decision(false, "Planner observation is missing or not package-aware")
         val visible = visibleLabels(normalized)
         val clickableCounts = clickableLabelCounts(normalized)
+        val enabledClickableCounts = enabledClickableLabelCounts(normalized)
         val focusedEditable = hasFocusedEditableNode(normalized)
+        val focusedEnabledEditable = hasFocusedEnabledEditableNode(normalized)
         val focusedSensitive = hasFocusedSensitiveNode(normalized)
         val focusedNonSensitive = hasFocusedNonSensitiveNode(normalized)
 
@@ -28,49 +30,38 @@ object ReasoningGroundingPolicy {
                         return Decision(false, "Reasoning action ${index + 1} has a blank semantic target")
                     }
                     if (target !in visible) {
-                        return Decision(
-                            false,
-                            "Reasoning action ${index + 1} targets '${action.label}', which is not visible in the inspected UI",
-                        )
+                        return Decision(false, "Reasoning action ${index + 1} targets '${action.label}', which is not visible in the inspected UI")
                     }
                     val clickableMatches = clickableCounts[target] ?: 0
                     if (clickableMatches == 0) {
-                        return Decision(
-                            false,
-                            "Reasoning action ${index + 1} targets '${action.label}', but the inspected UI does not prove that target is clickable",
-                        )
+                        return Decision(false, "Reasoning action ${index + 1} targets '${action.label}', but the inspected UI does not prove that target is clickable")
                     }
                     if (clickableMatches > 1) {
-                        return Decision(
-                            false,
-                            "Reasoning action ${index + 1} targets '${action.label}', but $clickableMatches clickable matches make the target ambiguous",
-                        )
+                        return Decision(false, "Reasoning action ${index + 1} targets '${action.label}', but $clickableMatches clickable matches make the target ambiguous")
+                    }
+                    val enabledMatches = enabledClickableCounts[target] ?: 0
+                    if (enabledMatches != 1) {
+                        return Decision(false, "Reasoning action ${index + 1} targets '${action.label}', but the inspected UI does not prove that the clickable target is enabled")
                     }
                 }
                 is AgentAction.TypeText -> {
                     if (!focusedEditable) {
-                        return Decision(
-                            false,
-                            "Reasoning action ${index + 1} cannot type because the inspected UI does not prove a focused editable field",
-                        )
+                        return Decision(false, "Reasoning action ${index + 1} cannot type because the inspected UI does not prove a focused editable field")
+                    }
+                    if (!focusedEnabledEditable) {
+                        return Decision(false, "Reasoning action ${index + 1} cannot type because the focused editable field is not explicitly proven enabled")
                     }
                     if (focusedSensitive) {
-                        return Decision(
-                            false,
-                            "Reasoning action ${index + 1} cannot autonomously type into a sensitive field",
-                        )
+                        return Decision(false, "Reasoning action ${index + 1} cannot autonomously type into a sensitive field")
                     }
                     if (!focusedNonSensitive) {
-                        return Decision(
-                            false,
-                            "Reasoning action ${index + 1} cannot type because field sensitivity is not explicitly proven safe",
-                        )
+                        return Decision(false, "Reasoning action ${index + 1} cannot type because field sensitivity is not explicitly proven safe")
                     }
                 }
                 else -> Unit
             }
         }
-        return Decision(true, "Semantic targets are uniquely grounded with proven click affordances, and text-entry context is explicitly non-sensitive")
+        return Decision(true, "Semantic targets are uniquely grounded with proven enabled click affordances, and text-entry context is enabled and explicitly non-sensitive")
     }
 
     internal fun visibleLabels(observation: String): Set<String> = nodeTokens(observation)
@@ -89,45 +80,40 @@ object ReasoningGroundingPolicy {
         .groupingBy { it }
         .eachCount()
 
+    internal fun enabledClickableLabelCounts(observation: String): Map<String, Int> = nodeTokens(observation)
+        .filter { token -> token.contains(";clickable=true;") && token.contains(";enabled=true;") }
+        .mapNotNull(::nodeLabel)
+        .map(::normalizeLabel)
+        .filter(String::isNotEmpty)
+        .groupingBy { it }
+        .eachCount()
+
     internal fun hasFocusedEditableNode(observation: String): Boolean = nodeTokens(observation).any { token ->
         token.contains(";editable=true;") && token.contains(";focused=true]")
     }
 
+    internal fun hasFocusedEnabledEditableNode(observation: String): Boolean = nodeTokens(observation).any { token ->
+        token.contains(";enabled=true;") && token.contains(";editable=true;") && token.contains(";focused=true]")
+    }
+
     internal fun hasFocusedSensitiveNode(observation: String): Boolean = nodeTokens(observation).any { token ->
-        token.contains(";editable=true;") &&
-            token.contains(";sensitive=true;") &&
-            token.contains(";focused=true]")
+        token.contains(";editable=true;") && token.contains(";sensitive=true;") && token.contains(";focused=true]")
     }
 
     internal fun hasFocusedNonSensitiveNode(observation: String): Boolean = nodeTokens(observation).any { token ->
-        token.contains(";editable=true;") &&
-            token.contains(";sensitive=false;") &&
-            token.contains(";focused=true]")
+        token.contains(";editable=true;") && token.contains(";sensitive=false;") && token.contains(";focused=true]")
     }
 
     private fun nodeTokens(observation: String): Sequence<String> {
         val body = observation.substringAfter('|', observation.substringAfter('\n', ""))
-        return body
-            .split('•', '\n')
-            .asSequence()
-            .map(String::trim)
-            .filter { it.startsWith("node[") }
+        return body.split('•', '\n').asSequence().map(String::trim).filter { it.startsWith("node[") }
     }
 
     private fun nodeLabel(token: String): String? {
-        val encoded = token
-            .removePrefix("node[")
-            .substringBefore(";clickable=")
-            .substringAfter("text=", "")
+        val encoded = token.removePrefix("node[").substringBefore(";clickable=").substringAfter("text=", "")
         if (encoded.isBlank()) return null
-        return encoded
-            .replace("\\;", ";")
-            .replace("\\]", "]")
-            .replace("\\\\", "\\")
+        return encoded.replace("\\;", ";").replace("\\]", "]").replace("\\\\", "\\")
     }
 
-    internal fun normalizeLabel(value: String): String = value
-        .trim()
-        .lowercase()
-        .replace(Regex("\\s+"), " ")
+    internal fun normalizeLabel(value: String): String = value.trim().lowercase().replace(Regex("\\s+"), " ")
 }
