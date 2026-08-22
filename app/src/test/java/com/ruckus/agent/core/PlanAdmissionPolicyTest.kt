@@ -30,6 +30,16 @@ class PlanAdmissionPolicyTest {
         assertFalse(PlanAdmissionPolicy.evaluate(listOf(AgentAction.Swipe(0f,0f,1f,1f,0))).allowed)
     }
 
+    @Test fun rejectsMalformedCoordinateActionsBeforeExecution() {
+        assertFalse(PlanAdmissionPolicy.evaluate(listOf(AgentAction.Tap(Float.NaN, 100f))).allowed)
+        assertFalse(PlanAdmissionPolicy.evaluate(listOf(AgentAction.Tap(100f, Float.POSITIVE_INFINITY))).allowed)
+        assertFalse(PlanAdmissionPolicy.evaluate(listOf(AgentAction.Tap(-1f, 100f))).allowed)
+        assertFalse(PlanAdmissionPolicy.evaluate(listOf(AgentAction.Swipe(10f, 10f, 10f, 10f, 350))).allowed)
+        assertFalse(PlanAdmissionPolicy.evaluate(listOf(AgentAction.Swipe(10f, 10f, Float.NaN, 20f, 350))).allowed)
+        assertTrue(PlanAdmissionPolicy.evaluate(listOf(AgentAction.Tap(10f, 20f))).allowed)
+        assertTrue(PlanAdmissionPolicy.evaluate(listOf(AgentAction.Swipe(10f, 10f, 20f, 30f, 350))).allowed)
+    }
+
     @Test fun commandPlannerRefusesOverlongRequestAtomically() {
         val request=(1..(PlanAdmissionPolicy.MAX_ACTIONS + 1)).joinToString(" then ") { "home" }
         val plan=CommandPlanner.plan(request)
