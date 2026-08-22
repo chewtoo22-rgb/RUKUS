@@ -33,9 +33,15 @@ object ActionVerifier {
                 else VerificationResult(false,"No visible UI change or success result")
             }
             is AgentAction.TypeText -> {
-                if(after?.contains(action.text, ignoreCase = true) == true) VerificationResult(true,"Typed text is visible")
-                else if(result != null && before!=after) VerificationResult(true,"UI changed after text entry")
-                else VerificationResult(false,"Typed text not observed")
+                val wasVisible = before?.contains(action.text, ignoreCase = true) == true
+                val isVisible = after?.contains(action.text, ignoreCase = true) == true
+                if(action.text.isNotBlank() && !wasVisible && isVisible) {
+                    VerificationResult(true,"Typed text became visible after text entry")
+                } else if(wasVisible && isVisible) {
+                    VerificationResult(false,"Typed text was already visible before the action, so text entry was not proven")
+                } else {
+                    VerificationResult(false,"Typed text did not become visible after text entry")
+                }
             }
             is AgentAction.SetBrightness, is AgentAction.SetMediaVolume ->
                 if(result != null) VerificationResult(true,result) else VerificationResult(false,"Setting change was not acknowledged")
