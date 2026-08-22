@@ -8,16 +8,53 @@ class ReasoningPlanPolicyTest {
     private val screen = "pkg=com.example.app\ntext=Continue"
 
     @Test
-    fun semantic_ui_plan_is_admitted() {
+    fun single_semantic_ui_mutation_is_admitted() {
         val decision = ReasoningPlanPolicy.evaluate(
             listOf(
                 AgentAction.TapLabel("Continue"),
-                AgentAction.TypeText("hello"),
                 AgentAction.InspectScreen,
             )
         )
 
         assertTrue(decision.allowed)
+    }
+
+    @Test
+    fun multiple_inspections_without_mutation_are_admitted() {
+        val decision = ReasoningPlanPolicy.evaluate(
+            listOf(AgentAction.InspectScreen, AgentAction.InspectScreen)
+        )
+
+        assertTrue(decision.allowed)
+    }
+
+    @Test
+    fun second_state_change_requires_fresh_observation_and_replan() {
+        val decision = ReasoningPlanPolicy.evaluate(
+            listOf(
+                AgentAction.TapLabel("Continue"),
+                AgentAction.TypeText("hello"),
+            )
+        )
+
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("re-inspect", ignoreCase = true))
+    }
+
+    @Test
+    fun observed_proposal_refuses_two_mutations_from_one_observation() {
+        val result = ObservedPlanProposal.create(
+            goal = "Continue and type hello",
+            actions = listOf(
+                AgentAction.TapLabel("Continue"),
+                AgentAction.TypeText("hello"),
+            ),
+            observation = screen,
+            nowEpochMs = 1_000L,
+        )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("re-inspect", ignoreCase = true))
     }
 
     @Test
