@@ -19,8 +19,15 @@ object ActionVerifier {
                 if(before != null && after != null && before != after) VerificationResult(true,"Visible UI changed after system navigation")
                 else VerificationResult(false,"System navigation was not proven by an observable UI change")
             }
-            is AgentAction.Tap, is AgentAction.TapLabel,
-            is AgentAction.Swipe, is AgentAction.Scroll -> {
+            is AgentAction.TapLabel -> {
+                if(before != null && after != null && before != after) VerificationResult(true,"Visible UI changed after semantic tap")
+                else VerificationResult(false,"Semantic tap was dispatched but produced no observable UI change")
+            }
+            is AgentAction.Scroll -> {
+                if(before != null && after != null && before != after) VerificationResult(true,"Visible UI changed after semantic scroll")
+                else VerificationResult(false,"Semantic scroll was dispatched but produced no observable UI change")
+            }
+            is AgentAction.Tap, is AgentAction.Swipe -> {
                 if(before != null && after != null && before != after) VerificationResult(true,"Visible UI changed")
                 else if(result != null) VerificationResult(true,"Action adapter reported success")
                 else VerificationResult(false,"No visible UI change or success result")
