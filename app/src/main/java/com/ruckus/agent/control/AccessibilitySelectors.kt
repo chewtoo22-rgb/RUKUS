@@ -14,6 +14,7 @@ object AccessibilitySelectors {
                 viewId = node.viewIdResourceName,
                 className = node.className?.toString(),
                 clickable = node.isClickable,
+                enabled = node.isEnabled,
                 editable = node.isEditable,
                 sensitive = node.isPassword,
                 focused = node.isFocused,
@@ -30,7 +31,9 @@ object AccessibilitySelectors {
         val target = candidates.firstOrNull() ?: return false
         var node: AccessibilityNodeInfo? = target
         while (node != null) {
-            if (node.isClickable) return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (node.isClickable && node.isEnabled) {
+                return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            }
             node = node.parent
         }
         return false
@@ -39,6 +42,7 @@ object AccessibilitySelectors {
     fun typeIntoFocused(root: AccessibilityNodeInfo?, text: String): Boolean {
         if (root == null) return false
         val focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+        if (!focus.isEnabled || !focus.isEditable || focus.isPassword) return false
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
