@@ -14,7 +14,8 @@ object AccessibilitySelectors {
                 viewId = node.viewIdResourceName,
                 className = node.className?.toString(),
                 clickable = node.isClickable,
-                editable = node.isEditable
+                editable = node.isEditable,
+                focused = node.isFocused,
             )
             for (i in 0 until node.childCount) node.getChild(i)?.let(::walk)
         }
