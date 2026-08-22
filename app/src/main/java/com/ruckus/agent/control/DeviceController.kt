@@ -79,7 +79,14 @@ class DeviceController(private val context: Context) {
             .sorted()
             .take(32)
             .toList()
-        val body = (nodes + apps).ifEmpty { listOf("No readable labels") }.joinToString(" • ")
+        val brightness = runCatching {
+            Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
+        }.getOrDefault(-1)
+        val audio = context.getSystemService(AudioManager::class.java)
+        val media = runCatching { audio.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(-1)
+        val mediaMax = runCatching { audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(-1)
+        val deviceState = "state[brightness=$brightness;media=$media;mediaMax=$mediaMax]"
+        val body = (listOf(deviceState) + nodes + apps).joinToString(" • ")
         return "pkg=$pkg | $body"
     }
 
