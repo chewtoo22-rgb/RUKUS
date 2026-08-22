@@ -136,12 +136,13 @@ data class ObservedPlanProposal(
 }
 
 /**
- * Deterministically binds device-wide setting mutations to explicit user intent in the goal.
+ * Deterministically binds device-wide setting and system-navigation mutations to explicit user
+ * intent in the goal.
  *
  * Brightness and media-volume changes do not have a UI target that ReasoningGroundingPolicy can
- * prove. A reasoning planner therefore may not introduce or alter them as an incidental step. The
- * goal must explicitly name the setting and the exact requested percentage. A few unambiguous
- * natural-language aliases (mute/max/full/minimum) are mapped to their deterministic endpoints.
+ * prove. Likewise, Back and Home are global navigation primitives rather than semantic controls in
+ * the inspected node tree. A reasoning planner may therefore use these actions only when the goal
+ * contains an unambiguous request for that exact operation.
  */
 object ReasoningIntentBindingPolicy {
     data class Decision(val allowed: Boolean, val reason: String)
@@ -154,23 +155,43 @@ object ReasoningIntentBindingPolicy {
                 is AgentAction.SetBrightness -> requestedSettingValues(goal, "brightness")
                     .contains(action.percent)
                 is AgentAction.SetMediaVolume -> requestedVolumeValues(goal).contains(action.percent)
+                AgentAction.Back -> requestsBackNavigation(goal)
+                AgentAction.Home -> requestsHomeNavigation(goal)
                 else -> true
             }
 
             if (!allowed) {
-                val setting = when (action) {
-                    is AgentAction.SetBrightness -> "brightness"
-                    is AgentAction.SetMediaVolume -> "media volume"
-                    else -> "setting"
+                val requirement = when (action) {
+                    is AgentAction.SetBrightness -> "brightness changes require the goal to explicitly request the exact target value"
+                    is AgentAction.SetMediaVolume -> "media volume changes require the goal to explicitly request the exact target value"
+                    AgentAction.Back -> "Back navigation requires an explicit request to go back or return to the previous screen"
+                    AgentAction.Home -> "Home navigation requires an explicit request to go to or return to the Home screen"
+                    else -> "action requires explicit goal intent"
                 }
-                return Decision(
-                    false,
-                    "Step ${index + 1}: autonomous $setting changes require the goal to explicitly request the exact target value",
-                )
+                return Decision(false, "Step ${index + 1}: autonomous $requirement")
             }
         }
 
-        return Decision(true, "Device-wide setting mutations are explicitly bound to the user goal")
+        return Decision(true, "Global mutations are explicitly bound to the user goal")
+    }
+
+    internal fun requestsBackNavigation(goal: String): Boolean {
+        val normalized = goal.lowercase().replace(Regex("\\s+"), " ").trim()
+        return listOf(
+            Regex("\\b(?:go|navigate|move)\\s+back\\b"),
+            Regex("\\b(?:press|tap|use)\\s+(?:the\\s+)?back(?:\\s+button)?\\b"),
+            Regex("\\breturn\\s+to\\s+(?:the\\s+)?previous\\s+(?:screen|page|view)\\b"),
+            Regex("\\bback\\s+to\\s+(?:the\\s+)?previous\\s+(?:screen|page|view)\\b"),
+        ).any { it.containsMatchIn(normalized) }
+    }
+
+    internal fun requestsHomeNavigation(goal: String): Boolean {
+        val normalized = goal.lowercase().replace(Regex("\\s+"), " ").trim()
+        return listOf(
+            Regex("\\b(?:go|navigate|return|take me)\\s+(?:to\\s+)?(?:the\\s+)?home\\s+screen\\b"),
+            Regex("\\b(?:press|tap|use)\\s+(?:the\\s+)?home(?:\\s+button)?\\b"),
+            Regex("\\bgo\\s+home\\b"),
+        ).any { it.containsMatchIn(normalized) }
     }
 
     internal fun requestedSettingValues(goal: String, keyword: String): Set<Int> {
