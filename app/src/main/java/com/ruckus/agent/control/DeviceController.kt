@@ -33,10 +33,10 @@ class DeviceController(private val context: Context) {
             AgentAction.Back -> { checkNotNull(RuckusAccessibilityService.instance).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK); "Back" }
             AgentAction.Home -> { checkNotNull(RuckusAccessibilityService.instance).performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME); "Home" }
             is AgentAction.Tap -> { check(RuckusAccessibilityService.instance?.tap(action.x, action.y) == true); "Tapped ${action.x},${action.y}" }
-            is AgentAction.TapLabel -> { check(RuckusAccessibilityService.instance?.clickLabel(action.label) == true) { "Visible label not found/clickable: ${action.label}" }; "Tapped ${action.label}" }
+            is AgentAction.TapLabel -> { check(RuckusAccessibilityService.instance?.clickLabel(action.label) == true) { "Visible label not found/clickable/enabled: ${action.label}" }; "Tapped ${action.label}" }
             is AgentAction.Swipe -> { check(RuckusAccessibilityService.instance?.swipe(action.x1, action.y1, action.x2, action.y2, action.durationMs) == true); "Swiped" }
             is AgentAction.Scroll -> { check(RuckusAccessibilityService.instance?.scroll(action.direction) == true); "Scrolled ${action.direction.name.lowercase()}" }
-            is AgentAction.TypeText -> { check(RuckusAccessibilityService.instance?.typeFocused(action.text) == true) { "No editable focused field" }; "Typed text" }
+            is AgentAction.TypeText -> { check(RuckusAccessibilityService.instance?.typeFocused(action.text) == true) { "No enabled, editable, non-sensitive focused field" }; "Typed text" }
             AgentAction.InspectScreen -> inspectScreen()
             is AgentAction.SetBrightness -> {
                 require(action.percent in 0..100); check(Settings.System.canWrite(context)) { "WRITE_SETTINGS not granted" }
@@ -62,7 +62,7 @@ class DeviceController(private val context: Context) {
                 val label = node.text?.trim()?.takeIf { it.isNotBlank() }
                     ?: node.contentDescription?.trim()?.takeIf { it.isNotBlank() }
                     ?: ""
-                "node[text=${escapeObservation(label)};clickable=${node.clickable};editable=${node.editable};sensitive=${node.sensitive};focused=${node.focused}]"
+                "node[text=${escapeObservation(label)};clickable=${node.clickable};enabled=${node.enabled};editable=${node.editable};sensitive=${node.sensitive};focused=${node.focused}]"
             }
             .distinct()
             .take(16)
