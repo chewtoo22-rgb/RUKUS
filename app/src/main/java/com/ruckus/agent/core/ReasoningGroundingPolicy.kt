@@ -4,9 +4,9 @@ package com.ruckus.agent.core
  * Requires autonomous semantic actions to be grounded in the observation that produced the plan.
  * Tap targets must be visible, explicitly clickable, explicitly enabled, and unambiguous in the
  * structured UI snapshot. Text entry is stricter: a reasoning proposal may type only when the
- * inspected UI proves that an enabled, editable, non-sensitive input currently owns input focus.
+ * inspected UI proves that exactly one enabled, editable, non-sensitive input owns input focus.
  * This keeps a planner from inventing interaction affordances, targeting disabled controls,
- * guessing between duplicate controls, typing context, or autonomously writing into secrets.
+ * guessing between duplicate controls, ambiguous typing contexts, or autonomously writing into secrets.
  */
 object ReasoningGroundingPolicy {
     data class Decision(val allowed: Boolean, val reason: String)
@@ -17,10 +17,10 @@ object ReasoningGroundingPolicy {
         val visible = visibleLabels(normalized)
         val clickableCounts = clickableLabelCounts(normalized)
         val enabledClickableCounts = enabledClickableLabelCounts(normalized)
-        val focusedEditable = hasFocusedEditableNode(normalized)
-        val focusedEnabledEditable = hasFocusedEnabledEditableNode(normalized)
-        val focusedSensitive = hasFocusedSensitiveNode(normalized)
-        val focusedNonSensitive = hasFocusedNonSensitiveNode(normalized)
+        val focusedEditableCount = focusedEditableNodeCount(normalized)
+        val focusedEnabledEditableCount = focusedEnabledEditableNodeCount(normalized)
+        val focusedSensitiveCount = focusedSensitiveNodeCount(normalized)
+        val focusedNonSensitiveCount = focusedNonSensitiveNodeCount(normalized)
 
         actions.forEachIndexed { index, action ->
             when (action) {
@@ -45,23 +45,26 @@ object ReasoningGroundingPolicy {
                     }
                 }
                 is AgentAction.TypeText -> {
-                    if (!focusedEditable) {
+                    if (focusedEditableCount == 0) {
                         return Decision(false, "Reasoning action ${index + 1} cannot type because the inspected UI does not prove a focused editable field")
                     }
-                    if (!focusedEnabledEditable) {
+                    if (focusedEditableCount > 1) {
+                        return Decision(false, "Reasoning action ${index + 1} cannot type because $focusedEditableCount focused editable fields make the typing target ambiguous")
+                    }
+                    if (focusedEnabledEditableCount != 1) {
                         return Decision(false, "Reasoning action ${index + 1} cannot type because the focused editable field is not explicitly proven enabled")
                     }
-                    if (focusedSensitive) {
+                    if (focusedSensitiveCount > 0) {
                         return Decision(false, "Reasoning action ${index + 1} cannot autonomously type into a sensitive field")
                     }
-                    if (!focusedNonSensitive) {
+                    if (focusedNonSensitiveCount != 1) {
                         return Decision(false, "Reasoning action ${index + 1} cannot type because field sensitivity is not explicitly proven safe")
                     }
                 }
                 else -> Unit
             }
         }
-        return Decision(true, "Semantic targets are uniquely grounded with proven enabled click affordances, and text-entry context is enabled and explicitly non-sensitive")
+        return Decision(true, "Semantic targets are uniquely grounded with proven enabled click affordances, and text-entry context is uniquely focused, enabled, and explicitly non-sensitive")
     }
 
     internal fun visibleLabels(observation: String): Set<String> = nodeTokens(observation)
@@ -88,19 +91,19 @@ object ReasoningGroundingPolicy {
         .groupingBy { it }
         .eachCount()
 
-    internal fun hasFocusedEditableNode(observation: String): Boolean = nodeTokens(observation).any { token ->
+    internal fun focusedEditableNodeCount(observation: String): Int = nodeTokens(observation).count { token ->
         token.contains(";editable=true;") && token.contains(";focused=true]")
     }
 
-    internal fun hasFocusedEnabledEditableNode(observation: String): Boolean = nodeTokens(observation).any { token ->
+    internal fun focusedEnabledEditableNodeCount(observation: String): Int = nodeTokens(observation).count { token ->
         token.contains(";enabled=true;") && token.contains(";editable=true;") && token.contains(";focused=true]")
     }
 
-    internal fun hasFocusedSensitiveNode(observation: String): Boolean = nodeTokens(observation).any { token ->
+    internal fun focusedSensitiveNodeCount(observation: String): Int = nodeTokens(observation).count { token ->
         token.contains(";editable=true;") && token.contains(";sensitive=true;") && token.contains(";focused=true]")
     }
 
-    internal fun hasFocusedNonSensitiveNode(observation: String): Boolean = nodeTokens(observation).any { token ->
+    internal fun focusedNonSensitiveNodeCount(observation: String): Int = nodeTokens(observation).count { token ->
         token.contains(";editable=true;") && token.contains(";sensitive=false;") && token.contains(";focused=true]")
     }
 
