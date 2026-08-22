@@ -5,10 +5,12 @@ package com.ruckus.agent.core
  * Tap targets must be visible, explicitly clickable, explicitly enabled, and unambiguous in the
  * structured UI snapshot. Text entry is stricter: a reasoning proposal may type only when the
  * inspected UI proves that exactly one enabled, editable, non-sensitive input owns input focus.
- * Scroll actions must be backed by at least one explicitly enabled, scrollable accessibility node.
+ * Scroll actions are also target-sensitive: exactly one explicitly enabled, scrollable accessibility
+ * node must be present so the planner cannot guess which container should receive the gesture.
  * This keeps a planner from inventing interaction affordances, targeting disabled controls,
- * guessing between duplicate controls, ambiguous typing contexts, autonomously writing into secrets,
- * or issuing blind scroll gestures against a UI that does not expose scrollability.
+ * guessing between duplicate controls, ambiguous typing contexts or scroll containers,
+ * autonomously writing into secrets, or issuing blind scroll gestures against a UI that does not
+ * expose a unique scrollable target.
  */
 object ReasoningGroundingPolicy {
     data class Decision(val allowed: Boolean, val reason: String)
@@ -68,11 +70,14 @@ object ReasoningGroundingPolicy {
                     if (enabledScrollableCount == 0) {
                         return Decision(false, "Reasoning action ${index + 1} cannot scroll because the inspected UI does not prove an enabled scrollable container")
                     }
+                    if (enabledScrollableCount > 1) {
+                        return Decision(false, "Reasoning action ${index + 1} cannot scroll because $enabledScrollableCount enabled scrollable containers make the target ambiguous")
+                    }
                 }
                 else -> Unit
             }
         }
-        return Decision(true, "Semantic actions are grounded in proven enabled accessibility affordances; text entry is uniquely focused and non-sensitive, and scrolls require an enabled scrollable container")
+        return Decision(true, "Semantic actions are grounded in proven enabled accessibility affordances; text entry is uniquely focused and non-sensitive, and scrolls require one unique enabled scrollable container")
     }
 
     internal fun visibleLabels(observation: String): Set<String> = nodeTokens(observation)
