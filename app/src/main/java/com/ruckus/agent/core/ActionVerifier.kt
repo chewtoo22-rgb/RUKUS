@@ -43,10 +43,43 @@ object ActionVerifier {
                     VerificationResult(false,"Typed text did not become visible after text entry")
                 }
             }
-            is AgentAction.SetBrightness, is AgentAction.SetMediaVolume ->
-                if(result != null) VerificationResult(true,result) else VerificationResult(false,"Setting change was not acknowledged")
+            is AgentAction.SetBrightness -> verifyBrightness(action, after)
+            is AgentAction.SetMediaVolume -> verifyMediaVolume(action, after)
             AgentAction.InspectScreen -> VerificationResult(after?.startsWith("pkg=")==true,"Package-aware screen inspection completed")
             is AgentAction.RunApprovedShell -> VerificationResult(result != null,result ?: "Privileged action not acknowledged")
         }
+    }
+
+    private fun verifyBrightness(action:AgentAction.SetBrightness, after:String?):VerificationResult {
+        val observed = stateInt(after, "brightness")
+            ?: return VerificationResult(false,"Brightness state was not observable after the change")
+        val expected = (action.percent * 255 / 100).coerceIn(1,255)
+        return if(observed == expected) VerificationResult(true,"Observed brightness matches requested setting")
+        else VerificationResult(false,"Brightness verification mismatch: expected raw=$expected observed=$observed")
+    }
+
+    private fun verifyMediaVolume(action:AgentAction.SetMediaVolume, after:String?):VerificationResult {
+        val observed = stateInt(after, "media")
+            ?: return VerificationResult(false,"Media volume state was not observable after the change")
+        val max = stateInt(after, "mediaMax")
+            ?: return VerificationResult(false,"Media volume maximum was not observable after the change")
+        if(max < 0) return VerificationResult(false,"Media volume maximum was invalid after the change")
+        val expected = (max * action.percent / 100).coerceIn(0,max)
+        return if(observed == expected) VerificationResult(true,"Observed media volume matches requested setting")
+        else VerificationResult(false,"Media volume verification mismatch: expected=$expected/$max observed=$observed/$max")
+    }
+
+    private fun stateInt(observation:String?, key:String):Int? {
+        if(observation == null) return null
+        val state = observation.substringAfter("state[","").substringBefore("]","")
+        if(state.isBlank()) return null
+        return state.split(';')
+            .mapNotNull { entry ->
+                val separator = entry.indexOf('=')
+                if(separator <= 0) null else entry.substring(0, separator) to entry.substring(separator + 1)
+            }
+            .firstOrNull { (name, _) -> name == key }
+            ?.second
+            ?.toIntOrNull()
     }
 }
