@@ -2,10 +2,11 @@ package com.ruckus.agent.core
 
 /**
  * Requires autonomous semantic actions to be grounded in the observation that produced the plan.
- * Tap targets must be both visible and explicitly clickable in the structured UI snapshot. Text
- * entry is stricter: a reasoning proposal may type only when the inspected UI proves that an
- * editable, non-sensitive input currently owns input focus. This keeps a planner from inventing
- * interaction affordances, typing context, or autonomously writing into password/secret fields.
+ * Tap targets must be visible, explicitly clickable, and unambiguous in the structured UI
+ * snapshot. Text entry is stricter: a reasoning proposal may type only when the inspected UI
+ * proves that an editable, non-sensitive input currently owns input focus. This keeps a planner
+ * from inventing interaction affordances, guessing between duplicate controls, typing context,
+ * or autonomously writing into password/secret fields.
  */
 object ReasoningGroundingPolicy {
     data class Decision(val allowed: Boolean, val reason: String)
@@ -14,7 +15,7 @@ object ReasoningGroundingPolicy {
         val normalized = ObservedPlanProposal.normalizeObservation(observation)
             ?: return Decision(false, "Planner observation is missing or not package-aware")
         val visible = visibleLabels(normalized)
-        val clickable = clickableLabels(normalized)
+        val clickableCounts = clickableLabelCounts(normalized)
         val focusedEditable = hasFocusedEditableNode(normalized)
         val focusedSensitive = hasFocusedSensitiveNode(normalized)
         val focusedNonSensitive = hasFocusedNonSensitiveNode(normalized)
@@ -32,10 +33,17 @@ object ReasoningGroundingPolicy {
                             "Reasoning action ${index + 1} targets '${action.label}', which is not visible in the inspected UI",
                         )
                     }
-                    if (target !in clickable) {
+                    val clickableMatches = clickableCounts[target] ?: 0
+                    if (clickableMatches == 0) {
                         return Decision(
                             false,
                             "Reasoning action ${index + 1} targets '${action.label}', but the inspected UI does not prove that target is clickable",
+                        )
+                    }
+                    if (clickableMatches > 1) {
+                        return Decision(
+                            false,
+                            "Reasoning action ${index + 1} targets '${action.label}', but $clickableMatches clickable matches make the target ambiguous",
                         )
                     }
                 }
@@ -62,7 +70,7 @@ object ReasoningGroundingPolicy {
                 else -> Unit
             }
         }
-        return Decision(true, "Semantic targets, click affordances, and non-sensitive text-entry context are grounded in the inspected UI")
+        return Decision(true, "Semantic targets are uniquely grounded with proven click affordances, and text-entry context is explicitly non-sensitive")
     }
 
     internal fun visibleLabels(observation: String): Set<String> = nodeTokens(observation)
@@ -71,12 +79,15 @@ object ReasoningGroundingPolicy {
         .filter(String::isNotEmpty)
         .toSet()
 
-    internal fun clickableLabels(observation: String): Set<String> = nodeTokens(observation)
+    internal fun clickableLabels(observation: String): Set<String> = clickableLabelCounts(observation).keys
+
+    internal fun clickableLabelCounts(observation: String): Map<String, Int> = nodeTokens(observation)
         .filter { token -> token.contains(";clickable=true;") }
         .mapNotNull(::nodeLabel)
         .map(::normalizeLabel)
         .filter(String::isNotEmpty)
-        .toSet()
+        .groupingBy { it }
+        .eachCount()
 
     internal fun hasFocusedEditableNode(observation: String): Boolean = nodeTokens(observation).any { token ->
         token.contains(";editable=true;") && token.contains(";focused=true]")
