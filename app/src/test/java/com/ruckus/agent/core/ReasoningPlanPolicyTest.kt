@@ -6,6 +6,7 @@ import org.junit.Test
 
 class ReasoningPlanPolicyTest {
     private val screen = "pkg=com.example.app\ntext=Continue"
+    private val inventoryScreen = "pkg=com.example.app | app[package=com.example.target;label=Example]"
 
     @Test
     fun single_semantic_ui_mutation_is_admitted() {
@@ -57,21 +58,13 @@ class ReasoningPlanPolicyTest {
     }
 
     @Test
-    fun exact_package_launch_is_not_admitted_without_trusted_inventory_grounding() {
-        val decision = ReasoningPlanPolicy.evaluate(listOf(AgentAction.OpenApp("com.example.target")))
-        assertFalse(decision.allowed)
-        assertTrue(decision.reason.contains("installed-app inventory", ignoreCase = true))
+    fun app_launch_primitives_are_admitted_to_the_reasoning_vocabulary() {
+        assertTrue(ReasoningPlanPolicy.evaluate(listOf(AgentAction.OpenApp("com.example.target"))).allowed)
+        assertTrue(ReasoningPlanPolicy.evaluate(listOf(AgentAction.OpenAppByName("Example"))).allowed)
     }
 
     @Test
-    fun app_name_launch_is_not_admitted_without_trusted_inventory_grounding() {
-        val decision = ReasoningPlanPolicy.evaluate(listOf(AgentAction.OpenAppByName("Example")))
-        assertFalse(decision.allowed)
-        assertTrue(decision.reason.contains("installed-app inventory", ignoreCase = true))
-    }
-
-    @Test
-    fun observed_proposal_refuses_ungrounded_app_launch_before_fingerprinting() {
+    fun observed_proposal_refuses_app_launch_without_trusted_inventory_grounding() {
         val result = ObservedPlanProposal.create(
             goal = "Open Example",
             actions = listOf(AgentAction.OpenAppByName("Example")),
@@ -79,7 +72,54 @@ class ReasoningPlanPolicyTest {
             nowEpochMs = 1_000L,
         )
         assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("installed-app inventory", ignoreCase = true))
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("trusted launchable-app inventory", ignoreCase = true))
+    }
+
+    @Test
+    fun observed_proposal_admits_exact_package_from_trusted_inventory() {
+        val result = ObservedPlanProposal.create(
+            goal = "Open Example",
+            actions = listOf(AgentAction.OpenApp("com.example.target")),
+            observation = inventoryScreen,
+            nowEpochMs = 1_000L,
+        )
+        assertTrue(result.isSuccess)
+    }
+
+    @Test
+    fun observed_proposal_admits_unique_exact_app_label_from_trusted_inventory() {
+        val result = ObservedPlanProposal.create(
+            goal = "Open Example",
+            actions = listOf(AgentAction.OpenAppByName("  example  ")),
+            observation = inventoryScreen,
+            nowEpochMs = 1_000L,
+        )
+        assertTrue(result.isSuccess)
+    }
+
+    @Test
+    fun observed_proposal_refuses_unknown_package_even_when_inventory_exists() {
+        val result = ObservedPlanProposal.create(
+            goal = "Open Unknown",
+            actions = listOf(AgentAction.OpenApp("com.example.unknown")),
+            observation = inventoryScreen,
+            nowEpochMs = 1_000L,
+        )
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("does not contain that package", ignoreCase = true))
+    }
+
+    @Test
+    fun observed_proposal_refuses_ambiguous_duplicate_app_labels() {
+        val observation = "pkg=com.example.app | app[package=com.example.one;label=Example] • app[package=com.example.two;label=example]"
+        val result = ObservedPlanProposal.create(
+            goal = "Open Example",
+            actions = listOf(AgentAction.OpenAppByName("Example")),
+            observation = observation,
+            nowEpochMs = 1_000L,
+        )
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("share that label", ignoreCase = true))
     }
 
     @Test
