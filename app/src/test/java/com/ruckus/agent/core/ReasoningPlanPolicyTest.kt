@@ -10,33 +10,22 @@ class ReasoningPlanPolicyTest {
     @Test
     fun single_semantic_ui_mutation_is_admitted() {
         val decision = ReasoningPlanPolicy.evaluate(
-            listOf(
-                AgentAction.TapLabel("Continue"),
-                AgentAction.InspectScreen,
-            )
+            listOf(AgentAction.TapLabel("Continue"), AgentAction.InspectScreen)
         )
-
         assertTrue(decision.allowed)
     }
 
     @Test
     fun multiple_inspections_without_mutation_are_admitted() {
-        val decision = ReasoningPlanPolicy.evaluate(
-            listOf(AgentAction.InspectScreen, AgentAction.InspectScreen)
-        )
-
+        val decision = ReasoningPlanPolicy.evaluate(listOf(AgentAction.InspectScreen, AgentAction.InspectScreen))
         assertTrue(decision.allowed)
     }
 
     @Test
     fun second_state_change_requires_fresh_observation_and_replan() {
         val decision = ReasoningPlanPolicy.evaluate(
-            listOf(
-                AgentAction.TapLabel("Continue"),
-                AgentAction.TypeText("hello"),
-            )
+            listOf(AgentAction.TapLabel("Continue"), AgentAction.TypeText("hello"))
         )
-
         assertFalse(decision.allowed)
         assertTrue(decision.reason.contains("re-inspect", ignoreCase = true))
     }
@@ -45,14 +34,10 @@ class ReasoningPlanPolicyTest {
     fun observed_proposal_refuses_two_mutations_from_one_observation() {
         val result = ObservedPlanProposal.create(
             goal = "Continue and type hello",
-            actions = listOf(
-                AgentAction.TapLabel("Continue"),
-                AgentAction.TypeText("hello"),
-            ),
+            actions = listOf(AgentAction.TapLabel("Continue"), AgentAction.TypeText("hello")),
             observation = screen,
             nowEpochMs = 1_000L,
         )
-
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("re-inspect", ignoreCase = true))
     }
@@ -60,7 +45,6 @@ class ReasoningPlanPolicyTest {
     @Test
     fun raw_coordinate_tap_is_not_admitted_from_reasoning_output() {
         val decision = ReasoningPlanPolicy.evaluate(listOf(AgentAction.Tap(100f, 200f)))
-
         assertFalse(decision.allowed)
         assertTrue(decision.reason.contains("coordinate", ignoreCase = true))
     }
@@ -68,9 +52,34 @@ class ReasoningPlanPolicyTest {
     @Test
     fun privileged_shell_is_not_admitted_from_reasoning_output() {
         val decision = ReasoningPlanPolicy.evaluate(listOf(AgentAction.RunApprovedShell("demo")))
-
         assertFalse(decision.allowed)
         assertTrue(decision.reason.contains("privileged", ignoreCase = true))
+    }
+
+    @Test
+    fun exact_package_launch_is_not_admitted_without_trusted_inventory_grounding() {
+        val decision = ReasoningPlanPolicy.evaluate(listOf(AgentAction.OpenApp("com.example.target")))
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("installed-app inventory", ignoreCase = true))
+    }
+
+    @Test
+    fun app_name_launch_is_not_admitted_without_trusted_inventory_grounding() {
+        val decision = ReasoningPlanPolicy.evaluate(listOf(AgentAction.OpenAppByName("Example")))
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("installed-app inventory", ignoreCase = true))
+    }
+
+    @Test
+    fun observed_proposal_refuses_ungrounded_app_launch_before_fingerprinting() {
+        val result = ObservedPlanProposal.create(
+            goal = "Open Example",
+            actions = listOf(AgentAction.OpenAppByName("Example")),
+            observation = screen,
+            nowEpochMs = 1_000L,
+        )
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("installed-app inventory", ignoreCase = true))
     }
 
     @Test
@@ -81,7 +90,6 @@ class ReasoningPlanPolicyTest {
             observation = screen,
             nowEpochMs = 1_000L,
         )
-
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("coordinate", ignoreCase = true))
     }
@@ -94,7 +102,6 @@ class ReasoningPlanPolicyTest {
             observation = screen,
             nowEpochMs = 1_000L,
         )
-
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("privileged", ignoreCase = true))
     }
