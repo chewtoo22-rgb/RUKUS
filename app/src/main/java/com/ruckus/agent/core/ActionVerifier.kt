@@ -15,7 +15,10 @@ object ActionVerifier {
                 else if(before!=null && after!=null && before!=after && result!=null) VerificationResult(true,"UI changed after app launch")
                 else VerificationResult(false,"App launch could not be verified")
             }
-            AgentAction.Home, AgentAction.Back,
+            AgentAction.Home, AgentAction.Back -> {
+                if(before != null && after != null && before != after) VerificationResult(true,"Visible UI changed after system navigation")
+                else VerificationResult(false,"System navigation was not proven by an observable UI change")
+            }
             is AgentAction.Tap, is AgentAction.TapLabel,
             is AgentAction.Swipe, is AgentAction.Scroll -> {
                 if(before != null && after != null && before != after) VerificationResult(true,"Visible UI changed")
