@@ -15,6 +15,7 @@ object ReasoningGroundingPolicy {
         val visible = visibleLabels(normalized)
         val focusedEditable = hasFocusedEditableNode(normalized)
         val focusedSensitive = hasFocusedSensitiveNode(normalized)
+        val focusedNonSensitive = hasFocusedNonSensitiveNode(normalized)
 
         actions.forEachIndexed { index, action ->
             when (action) {
@@ -41,6 +42,12 @@ object ReasoningGroundingPolicy {
                         return Decision(
                             false,
                             "Reasoning action ${index + 1} cannot autonomously type into a sensitive field",
+                        )
+                    }
+                    if (!focusedNonSensitive) {
+                        return Decision(
+                            false,
+                            "Reasoning action ${index + 1} cannot type because field sensitivity is not explicitly proven safe",
                         )
                     }
                 }
@@ -74,14 +81,18 @@ object ReasoningGroundingPolicy {
     }
 
     internal fun hasFocusedEditableNode(observation: String): Boolean = nodeTokens(observation).any { token ->
-        token.contains(";editable=true;") &&
-            token.contains(";sensitive=false;") &&
-            token.contains(";focused=true]")
+        token.contains(";editable=true;") && token.contains(";focused=true]")
     }
 
     internal fun hasFocusedSensitiveNode(observation: String): Boolean = nodeTokens(observation).any { token ->
         token.contains(";editable=true;") &&
             token.contains(";sensitive=true;") &&
+            token.contains(";focused=true]")
+    }
+
+    internal fun hasFocusedNonSensitiveNode(observation: String): Boolean = nodeTokens(observation).any { token ->
+        token.contains(";editable=true;") &&
+            token.contains(";sensitive=false;") &&
             token.contains(";focused=true]")
     }
 
