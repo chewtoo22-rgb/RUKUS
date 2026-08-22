@@ -56,13 +56,13 @@ class DeviceController(private val context: Context) {
         val pkg=service.activePackage() ?: "unknown"
         val nodes=service.snapshot().asSequence()
             .filter { node ->
-                !node.text.isNullOrBlank() || !node.contentDescription.isNullOrBlank() || node.editable || node.focused
+                !node.text.isNullOrBlank() || !node.contentDescription.isNullOrBlank() || node.editable || node.focused || node.scrollable
             }
             .map { node ->
                 val label = node.text?.trim()?.takeIf { it.isNotBlank() }
                     ?: node.contentDescription?.trim()?.takeIf { it.isNotBlank() }
                     ?: ""
-                "node[text=${escapeObservation(label)};clickable=${node.clickable};enabled=${node.enabled};editable=${node.editable};sensitive=${node.sensitive};focused=${node.focused}]"
+                "node[text=${escapeObservation(label)};clickable=${node.clickable};enabled=${node.enabled};editable=${node.editable};sensitive=${node.sensitive};focused=${node.focused};scrollable=${node.scrollable}]"
             }
             .distinct()
             .take(16)
