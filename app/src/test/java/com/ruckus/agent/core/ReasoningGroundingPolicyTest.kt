@@ -132,6 +132,16 @@ class ReasoningGroundingPolicyTest {
     }
 
     @Test
+    fun multiple_focused_editable_fields_are_rejected_as_ambiguous() {
+        val decision = ReasoningGroundingPolicy.evaluate(
+            listOf(AgentAction.TypeText("hello")),
+            "pkg=com.example.app | node[text=First;clickable=true;enabled=true;editable=true;sensitive=false;focused=true] • node[text=Second;clickable=true;enabled=true;editable=true;sensitive=false;focused=true]",
+        )
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("ambiguous", ignoreCase = true))
+    }
+
+    @Test
     fun autonomous_typing_into_disabled_field_is_rejected() {
         val decision = ReasoningGroundingPolicy.evaluate(
             listOf(AgentAction.TypeText("hello")),
