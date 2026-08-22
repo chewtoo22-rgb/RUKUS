@@ -67,7 +67,20 @@ class DeviceController(private val context: Context) {
             .distinct()
             .take(16)
             .toList()
-        return "pkg=$pkg | ${if(nodes.isEmpty()) "No readable labels" else nodes.joinToString(" • ")}" 
+        val launcherQuery = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val apps = context.packageManager.queryIntentActivities(launcherQuery, 0).asSequence()
+            .mapNotNull { info ->
+                val packageName = info.activityInfo?.packageName?.trim().orEmpty()
+                val label = runCatching { info.loadLabel(context.packageManager).toString().trim() }.getOrDefault("")
+                if (packageName.isBlank() || label.isBlank()) null
+                else "app[package=${escapeObservation(packageName)};label=${escapeObservation(label)}]"
+            }
+            .distinct()
+            .sorted()
+            .take(32)
+            .toList()
+        val body = (nodes + apps).ifEmpty { listOf("No readable labels") }.joinToString(" • ")
+        return "pkg=$pkg | $body"
     }
 
     private fun escapeObservation(value: String): String = value
