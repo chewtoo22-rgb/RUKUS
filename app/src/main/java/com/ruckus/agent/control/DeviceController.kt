@@ -54,10 +54,27 @@ class DeviceController(private val context: Context) {
     private fun inspectScreen(): String {
         val service=checkNotNull(RuckusAccessibilityService.instance) { "Accessibility service offline" }
         val pkg=service.activePackage() ?: "unknown"
-        val labels=service.snapshot().asSequence()
-            .flatMap { sequenceOf(it.text,it.contentDescription) }
-            .filterNotNull().map { it.trim() }.filter { it.isNotBlank() }
-            .distinct().take(12).toList()
-        return "pkg=$pkg | ${if(labels.isEmpty()) "No readable labels" else labels.joinToString(" • ")}" 
+        val nodes=service.snapshot().asSequence()
+            .filter { node ->
+                !node.text.isNullOrBlank() || !node.contentDescription.isNullOrBlank() || node.editable || node.focused
+            }
+            .map { node ->
+                val label = node.text?.trim()?.takeIf { it.isNotBlank() }
+                    ?: node.contentDescription?.trim()?.takeIf { it.isNotBlank() }
+                    ?: ""
+                "node[text=${escapeObservation(label)};clickable=${node.clickable};editable=${node.editable};focused=${node.focused}]"
+            }
+            .distinct()
+            .take(16)
+            .toList()
+        return "pkg=$pkg | ${if(nodes.isEmpty()) "No readable labels" else nodes.joinToString(" • ")}" 
     }
+
+    private fun escapeObservation(value: String): String = value
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace("]", "\\]")
+        .replace("•", " ")
+        .replace("\n", " ")
+        .replace("\r", " ")
 }
