@@ -5,8 +5,10 @@ package com.ruckus.agent.core
  * Tap targets must be visible, explicitly clickable, explicitly enabled, and unambiguous in the
  * structured UI snapshot. Text entry is stricter: a reasoning proposal may type only when the
  * inspected UI proves that exactly one enabled, editable, non-sensitive input owns input focus.
+ * Scroll actions must be backed by at least one explicitly enabled, scrollable accessibility node.
  * This keeps a planner from inventing interaction affordances, targeting disabled controls,
- * guessing between duplicate controls, ambiguous typing contexts, or autonomously writing into secrets.
+ * guessing between duplicate controls, ambiguous typing contexts, autonomously writing into secrets,
+ * or issuing blind scroll gestures against a UI that does not expose scrollability.
  */
 object ReasoningGroundingPolicy {
     data class Decision(val allowed: Boolean, val reason: String)
@@ -21,6 +23,7 @@ object ReasoningGroundingPolicy {
         val focusedEnabledEditableCount = focusedEnabledEditableNodeCount(normalized)
         val focusedSensitiveCount = focusedSensitiveNodeCount(normalized)
         val focusedNonSensitiveCount = focusedNonSensitiveNodeCount(normalized)
+        val enabledScrollableCount = enabledScrollableNodeCount(normalized)
 
         actions.forEachIndexed { index, action ->
             when (action) {
@@ -61,10 +64,15 @@ object ReasoningGroundingPolicy {
                         return Decision(false, "Reasoning action ${index + 1} cannot type because field sensitivity is not explicitly proven safe")
                     }
                 }
+                is AgentAction.Scroll -> {
+                    if (enabledScrollableCount == 0) {
+                        return Decision(false, "Reasoning action ${index + 1} cannot scroll because the inspected UI does not prove an enabled scrollable container")
+                    }
+                }
                 else -> Unit
             }
         }
-        return Decision(true, "Semantic targets are uniquely grounded with proven enabled click affordances, and text-entry context is uniquely focused, enabled, and explicitly non-sensitive")
+        return Decision(true, "Semantic actions are grounded in proven enabled accessibility affordances; text entry is uniquely focused and non-sensitive, and scrolls require an enabled scrollable container")
     }
 
     internal fun visibleLabels(observation: String): Set<String> = nodeTokens(observation)
@@ -76,7 +84,7 @@ object ReasoningGroundingPolicy {
     internal fun clickableLabels(observation: String): Set<String> = clickableLabelCounts(observation).keys
 
     internal fun clickableLabelCounts(observation: String): Map<String, Int> = nodeTokens(observation)
-        .filter { token -> token.contains(";clickable=true;") }
+        .filter { token -> hasFlag(token, "clickable", true) }
         .mapNotNull(::nodeLabel)
         .map(::normalizeLabel)
         .filter(String::isNotEmpty)
@@ -84,7 +92,7 @@ object ReasoningGroundingPolicy {
         .eachCount()
 
     internal fun enabledClickableLabelCounts(observation: String): Map<String, Int> = nodeTokens(observation)
-        .filter { token -> token.contains(";clickable=true;") && token.contains(";enabled=true;") }
+        .filter { token -> hasFlag(token, "clickable", true) && hasFlag(token, "enabled", true) }
         .mapNotNull(::nodeLabel)
         .map(::normalizeLabel)
         .filter(String::isNotEmpty)
@@ -92,19 +100,23 @@ object ReasoningGroundingPolicy {
         .eachCount()
 
     internal fun focusedEditableNodeCount(observation: String): Int = nodeTokens(observation).count { token ->
-        token.contains(";editable=true;") && token.contains(";focused=true]")
+        hasFlag(token, "editable", true) && hasFlag(token, "focused", true)
     }
 
     internal fun focusedEnabledEditableNodeCount(observation: String): Int = nodeTokens(observation).count { token ->
-        token.contains(";enabled=true;") && token.contains(";editable=true;") && token.contains(";focused=true]")
+        hasFlag(token, "enabled", true) && hasFlag(token, "editable", true) && hasFlag(token, "focused", true)
     }
 
     internal fun focusedSensitiveNodeCount(observation: String): Int = nodeTokens(observation).count { token ->
-        token.contains(";editable=true;") && token.contains(";sensitive=true;") && token.contains(";focused=true]")
+        hasFlag(token, "editable", true) && hasFlag(token, "sensitive", true) && hasFlag(token, "focused", true)
     }
 
     internal fun focusedNonSensitiveNodeCount(observation: String): Int = nodeTokens(observation).count { token ->
-        token.contains(";editable=true;") && token.contains(";sensitive=false;") && token.contains(";focused=true]")
+        hasFlag(token, "editable", true) && hasFlag(token, "sensitive", false) && hasFlag(token, "focused", true)
+    }
+
+    internal fun enabledScrollableNodeCount(observation: String): Int = nodeTokens(observation).count { token ->
+        hasFlag(token, "enabled", true) && hasFlag(token, "scrollable", true)
     }
 
     private fun nodeTokens(observation: String): Sequence<String> {
@@ -116,6 +128,11 @@ object ReasoningGroundingPolicy {
         val encoded = token.removePrefix("node[").substringBefore(";clickable=").substringAfter("text=", "")
         if (encoded.isBlank()) return null
         return encoded.replace("\\;", ";").replace("\\]", "]").replace("\\\\", "\\")
+    }
+
+    private fun hasFlag(token: String, name: String, value: Boolean): Boolean {
+        val marker = ";$name=$value"
+        return token.contains("$marker;") || token.endsWith("$marker]")
     }
 
     internal fun normalizeLabel(value: String): String = value.trim().lowercase().replace(Regex("\\s+"), " ")
