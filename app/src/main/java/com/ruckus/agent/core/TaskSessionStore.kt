@@ -25,7 +25,7 @@ class TaskSessionStore(context: Context) {
         val raw = prefs.getString(KEY, null) ?: return null
         return runCatching {
             val json = JSONObject(raw)
-            PersistedTaskSession(
+            val session = PersistedTaskSession(
                 request = json.optString("request"),
                 currentStep = json.optInt("currentStep"),
                 totalSteps = json.optInt("totalSteps"),
@@ -36,6 +36,17 @@ class TaskSessionStore(context: Context) {
                 savedAtMs = json.optLong("savedAt"),
                 planFingerprint = json.optString("planFingerprint").takeIf { it.isNotBlank() && it != "null" }
             )
+
+            if (
+                session.status == AgentTaskState.Status.WAITING_CONFIRMATION &&
+                !ConfirmationLeasePolicy.evaluate(session.savedAtMs).allowed
+            ) {
+                // Expired approval checkpoints are demoted to RUNNING so resume
+                // re-enters whole-plan preflight and asks for fresh confirmation.
+                session.copy(status = AgentTaskState.Status.RUNNING)
+            } else {
+                session
+            }
         }.getOrNull()
     }
 
