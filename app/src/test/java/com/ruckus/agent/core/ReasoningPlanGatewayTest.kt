@@ -78,4 +78,91 @@ class ReasoningPlanGatewayTest {
         assertTrue(result.error.orEmpty().contains("state-changing", ignoreCase = true))
         assertTrue(result.error.orEmpty().contains("replan", ignoreCase = true))
     }
+
+    @Test
+    fun `fresh intact proposal receives bounded execution grant`() {
+        val proposal = ReasoningPlanGateway.propose(
+            goal = "Continue in the current app",
+            observation = screen,
+            encodedActions = "TAP_LABEL\tContinue",
+            nowEpochMs = 1_000L,
+        ).proposal!!
+
+        val result = ReasoningPlanGateway.authorizeForExecution(
+            proposal = proposal,
+            currentObservation = screen,
+            nowEpochMs = 1_500L,
+        )
+
+        assertTrue(result.allowed)
+        val grant = result.grant!!
+        assertEquals(proposal.goal, grant.goal)
+        assertEquals(proposal.actions, grant.actions)
+        assertEquals(proposal.proposalFingerprint, grant.proposalFingerprint)
+        assertEquals(proposal.observationFingerprint, grant.observationFingerprint)
+        assertEquals(1_500L, grant.grantedAtEpochMs)
+    }
+
+    @Test
+    fun `execution authorization rejects changed UI and requires replan`() {
+        val proposal = ReasoningPlanGateway.propose(
+            goal = "Continue in the current app",
+            observation = screen,
+            encodedActions = "TAP_LABEL\tContinue",
+            nowEpochMs = 1_000L,
+        ).proposal!!
+        val changedScreen = "pkg=com.example.app | node[text=Done;clickable=true;enabled=true;editable=false;sensitive=false;focused=false]"
+
+        val result = ReasoningPlanGateway.authorizeForExecution(
+            proposal = proposal,
+            currentObservation = changedScreen,
+            nowEpochMs = 1_500L,
+        )
+
+        assertFalse(result.allowed)
+        assertTrue(result.grant == null)
+        assertTrue(result.error.orEmpty().contains("UI changed", ignoreCase = true))
+        assertTrue(result.error.orEmpty().contains("replan", ignoreCase = true))
+    }
+
+    @Test
+    fun `execution authorization rejects expired proposal lease`() {
+        val proposal = ReasoningPlanGateway.propose(
+            goal = "Continue in the current app",
+            observation = screen,
+            encodedActions = "TAP_LABEL\tContinue",
+            nowEpochMs = 1_000L,
+        ).proposal!!
+
+        val result = ReasoningPlanGateway.authorizeForExecution(
+            proposal = proposal,
+            currentObservation = screen,
+            nowEpochMs = 1_000L + ObservedPlanProposal.MAX_PROPOSAL_AGE_MS + 1L,
+        )
+
+        assertFalse(result.allowed)
+        assertTrue(result.grant == null)
+        assertTrue(result.error.orEmpty().contains("expired", ignoreCase = true))
+    }
+
+    @Test
+    fun `execution authorization rejects action mutation after admission`() {
+        val proposal = ReasoningPlanGateway.propose(
+            goal = "Continue in the current app",
+            observation = screen,
+            encodedActions = "TAP_LABEL\tContinue",
+            nowEpochMs = 1_000L,
+        ).proposal!!
+        val mutated = proposal.copy(actions = listOf(AgentAction.InspectScreen))
+
+        val result = ReasoningPlanGateway.authorizeForExecution(
+            proposal = mutated,
+            currentObservation = screen,
+            nowEpochMs = 1_500L,
+        )
+
+        assertFalse(result.allowed)
+        assertTrue(result.grant == null)
+        assertTrue(result.error.orEmpty().contains("changed after admission", ignoreCase = true))
+    }
 }
