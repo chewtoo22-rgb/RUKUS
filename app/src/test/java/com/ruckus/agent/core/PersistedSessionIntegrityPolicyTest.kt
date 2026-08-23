@@ -11,7 +11,8 @@ class PersistedSessionIntegrityPolicyTest {
         lastAction:String?="TapLabel(label=Continue)",
         recoveryAttempts:Int=0,
         status:AgentTaskState.Status=AgentTaskState.Status.WAITING_CONFIRMATION,
-        planFingerprint:String?="plan-fingerprint"
+        planFingerprint:String?="plan-fingerprint",
+        schemaVersion:Int=PERSISTED_SESSION_SCHEMA_VERSION
     ) = PersistedTaskSession(
         request=request,
         currentStep=currentStep,
@@ -21,12 +22,27 @@ class PersistedSessionIntegrityPolicyTest {
         recoveryAttempts=recoveryAttempts,
         status=status,
         savedAtMs=1_000_000L,
-        planFingerprint=planFingerprint
+        planFingerprint=planFingerprint,
+        schemaVersion=schemaVersion
     )
 
     @Test fun validPendingCheckpointIsAccepted() {
         val decision=PersistedSessionIntegrityPolicy.evaluate(session())
         assertTrue(decision.allowed)
+    }
+
+    @Test fun legacyCheckpointWithoutCurrentSchemaFailsClosed() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(session(schemaVersion=0))
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("schema version"))
+    }
+
+    @Test fun futureCheckpointSchemaFailsClosed() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(
+            session(schemaVersion=PERSISTED_SESSION_SCHEMA_VERSION+1)
+        )
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("schema version"))
     }
 
     @Test fun stepPastPlanEndFailsClosed() {
