@@ -37,6 +37,37 @@ class PlanSafetyPreflightTest {
         assertTrue(decision.allowed)
     }
 
+    @Test fun highImpactSemanticTapRequiresConfirmationBeforeEarlierActionsRun() {
+        val actions=listOf(
+            AgentAction.SetMediaVolume(20),
+            AgentAction.TapLabel("  Delete   Account  ")
+        )
+        val decision=PlanSafetyPreflight.evaluate(actions,0,approved=false)
+        assertFalse(decision.allowed)
+        assertTrue(decision.needsConfirmation)
+        assertEquals(1,decision.actionIndex)
+        assertEquals(AgentAction.TapLabel("  Delete   Account  "),decision.action)
+        assertTrue(decision.reason.contains("High-impact semantic action 'delete account'"))
+    }
+
+    @Test fun approvalAllowsHighImpactSemanticTap() {
+        val decision=PlanSafetyPreflight.evaluate(
+            listOf(AgentAction.TapLabel("Send")),
+            approved=true
+        )
+        assertTrue(decision.allowed)
+        assertFalse(decision.needsConfirmation)
+    }
+
+    @Test fun ordinarySemanticTapRemainsRoutine() {
+        val decision=PlanSafetyPreflight.evaluate(
+            listOf(AgentAction.TapLabel("Continue")),
+            approved=false
+        )
+        assertTrue(decision.allowed)
+        assertEquals(Risk.SAFE,SafetyGate.classify(AgentAction.TapLabel("Continue")).risk)
+    }
+
     @Test fun invalidStartStepIsRejected() {
         val actions=listOf(AgentAction.Home)
         assertFalse(PlanSafetyPreflight.evaluate(actions,startStep=-1).allowed)
