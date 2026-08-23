@@ -4,6 +4,8 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PlanSafetyPreflightTest {
+    private fun approvalFor(action: AgentAction): String = PlanSafetyPreflight.approvalFingerprint(action)
+
     @Test fun laterConfirmationBlocksBeforeEarlierSafeStepsRun() {
         val actions=listOf(
             AgentAction.Home,
@@ -17,14 +19,38 @@ class PlanSafetyPreflightTest {
         assertTrue(decision.action is AgentAction.RunApprovedShell)
     }
 
-    @Test fun approvalAllowsWholeRemainingPlanToProceed() {
-        val actions=listOf(
-            AgentAction.Home,
-            AgentAction.RunApprovedShell("demo")
+    @Test fun actionBoundApprovalAllowsWholeRemainingPlanToProceed() {
+        val confirm=AgentAction.RunApprovedShell("demo")
+        val actions=listOf(AgentAction.Home,confirm)
+        val decision=PlanSafetyPreflight.evaluate(
+            actions,
+            0,
+            approved=true,
+            approvedActionFingerprint=approvalFor(confirm)
         )
-        val decision=PlanSafetyPreflight.evaluate(actions,0,approved=true)
         assertTrue(decision.allowed)
         assertFalse(decision.needsConfirmation)
+    }
+
+    @Test fun approvalForDifferentActionIsRejected() {
+        val pending=AgentAction.TapLabel("Send")
+        val wrong=AgentAction.TapLabel("Delete photo")
+        val decision=PlanSafetyPreflight.evaluate(
+            listOf(pending),
+            approved=true,
+            approvedActionFingerprint=approvalFor(wrong)
+        )
+        assertFalse(decision.allowed)
+        assertTrue(decision.needsConfirmation)
+        assertEquals(pending,decision.action)
+        assertTrue(decision.reason.contains("did not match"))
+    }
+
+    @Test fun bareBooleanApprovalNoLongerAuthorizesHighImpactAction() {
+        val pending=AgentAction.TapLabel("Send")
+        val decision=PlanSafetyPreflight.evaluate(listOf(pending),approved=true)
+        assertFalse(decision.allowed)
+        assertTrue(decision.needsConfirmation)
     }
 
     @Test fun resumedPlanOnlyPreflightsRemainingActions() {
@@ -78,10 +104,12 @@ class PlanSafetyPreflightTest {
         }
     }
 
-    @Test fun approvalAllowsHighImpactSemanticTap() {
+    @Test fun actionBoundApprovalAllowsHighImpactSemanticTap() {
+        val action=AgentAction.TapLabel("Send")
         val decision=PlanSafetyPreflight.evaluate(
-            listOf(AgentAction.TapLabel("Send")),
-            approved=true
+            listOf(action),
+            approved=true,
+            approvedActionFingerprint=approvalFor(action)
         )
         assertTrue(decision.allowed)
         assertFalse(decision.needsConfirmation)
@@ -96,39 +124,48 @@ class PlanSafetyPreflightTest {
         assertEquals(Risk.SAFE,SafetyGate.classify(AgentAction.TapLabel("Continue")).risk)
     }
 
-    @Test fun multipleConfirmationActionsAreRejectedEvenWhenApproved() {
-        val actions=listOf(
-            AgentAction.TapLabel("Send"),
-            AgentAction.RunApprovedShell("demo")
+    @Test fun multipleConfirmationActionsAreRejectedEvenWithActionFingerprint() {
+        val first=AgentAction.TapLabel("Send")
+        val actions=listOf(first,AgentAction.RunApprovedShell("demo"))
+        val decision=PlanSafetyPreflight.evaluate(
+            actions,
+            approved=true,
+            approvedActionFingerprint=approvalFor(first)
         )
-        val decision=PlanSafetyPreflight.evaluate(actions,approved=true)
         assertFalse(decision.allowed)
         assertFalse(decision.needsConfirmation)
         assertEquals(0,decision.actionIndex)
-        assertEquals(AgentAction.TapLabel("Send"),decision.action)
+        assertEquals(first,decision.action)
         assertTrue(decision.reason.contains("2 confirmation-required actions"))
         assertTrue(decision.reason.contains("separate tasks"))
     }
 
     @Test fun multipleHighImpactSemanticActionsAreRejectedWithoutBlanketApproval() {
-        val actions=listOf(
-            AgentAction.Home,
-            AgentAction.TapLabel("Delete photo"),
-            AgentAction.TapLabel("Share with Alex")
+        val first=AgentAction.TapLabel("Delete photo")
+        val actions=listOf(AgentAction.Home,first,AgentAction.TapLabel("Share with Alex"))
+        val decision=PlanSafetyPreflight.evaluate(
+            actions,
+            approved=true,
+            approvedActionFingerprint=approvalFor(first)
         )
-        val decision=PlanSafetyPreflight.evaluate(actions,approved=true)
         assertFalse(decision.allowed)
         assertEquals(1,decision.actionIndex)
-        assertEquals(AgentAction.TapLabel("Delete photo"),decision.action)
+        assertEquals(first,decision.action)
     }
 
     @Test fun completedConfirmationDoesNotPoisonResumedRemainder() {
+        val remaining=AgentAction.RunApprovedShell("remaining")
         val actions=listOf(
             AgentAction.TapLabel("Send"),
             AgentAction.Home,
-            AgentAction.RunApprovedShell("remaining")
+            remaining
         )
-        val decision=PlanSafetyPreflight.evaluate(actions,startStep=1,approved=true)
+        val decision=PlanSafetyPreflight.evaluate(
+            actions,
+            startStep=1,
+            approved=true,
+            approvedActionFingerprint=approvalFor(remaining)
+        )
         assertTrue(decision.allowed)
         assertFalse(decision.needsConfirmation)
     }
