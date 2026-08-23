@@ -170,6 +170,42 @@ class PlanSafetyPreflightTest {
         assertFalse(decision.needsConfirmation)
     }
 
+    @Test fun highImpactActionMustTerminateRemainingPlanEvenWhenApproved() {
+        val confirm=AgentAction.TapLabel("Send")
+        val actions=listOf(confirm,AgentAction.Home)
+        val decision=PlanSafetyPreflight.evaluate(
+            actions,
+            startStep=0,
+            approved=true,
+            approvedActionFingerprint=approvalFor(confirm)
+        )
+        assertFalse(decision.allowed)
+        assertFalse(decision.needsConfirmation)
+        assertEquals(0,decision.actionIndex)
+        assertEquals(confirm,decision.action)
+        assertTrue(decision.reason.contains("final remaining action"))
+        assertTrue(decision.reason.contains("re-inspect and replan"))
+    }
+
+    @Test fun safeStepsMayPrecedeFinalHighImpactAction() {
+        val confirm=AgentAction.TapLabel("Send")
+        val actions=listOf(AgentAction.InspectScreen,AgentAction.SetMediaVolume(20),confirm)
+        val decision=PlanSafetyPreflight.evaluate(
+            actions,
+            startStep=0,
+            approved=true,
+            approvedActionFingerprint=approvalFor(confirm)
+        )
+        assertTrue(decision.allowed)
+    }
+
+    @Test fun terminalRuleAppliesOnlyToRemainingPlanOnResume() {
+        val confirm=AgentAction.TapLabel("Send")
+        val actions=listOf(confirm,AgentAction.Home,AgentAction.SetMediaVolume(30))
+        val decision=PlanSafetyPreflight.evaluate(actions,startStep=1,approved=false)
+        assertTrue(decision.allowed)
+    }
+
     @Test fun invalidStartStepIsRejected() {
         val actions=listOf(AgentAction.Home)
         assertFalse(PlanSafetyPreflight.evaluate(actions,startStep=-1).allowed)
