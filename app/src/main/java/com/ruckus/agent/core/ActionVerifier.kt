@@ -11,9 +11,13 @@ object ActionVerifier {
             }
             is AgentAction.OpenAppByName -> {
                 val launchedPkg=result?.substringAfter("package=","")?.trim().orEmpty()
-                if(launchedPkg.isNotEmpty() && after?.contains("pkg=$launchedPkg",ignoreCase=true)==true) VerificationResult(true,"Resolved app package is foreground")
-                else if(before!=null && after!=null && before!=after && result!=null) VerificationResult(true,"UI changed after app launch")
-                else VerificationResult(false,"App launch could not be verified")
+                if(launchedPkg.isNotEmpty() && after?.contains("pkg=$launchedPkg",ignoreCase=true)==true) {
+                    VerificationResult(true,"Resolved app package is foreground")
+                } else if(launchedPkg.isEmpty()) {
+                    VerificationResult(false,"App launch result did not identify the resolved package")
+                } else {
+                    VerificationResult(false,"Resolved app package was not observed in the foreground")
+                }
             }
             AgentAction.Home, AgentAction.Back -> {
                 if(before != null && after != null && before != after) VerificationResult(true,"Visible UI changed after system navigation")
