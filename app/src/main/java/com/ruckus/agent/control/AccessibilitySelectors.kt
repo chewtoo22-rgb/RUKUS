@@ -2,6 +2,7 @@ package com.ruckus.agent.control
 
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
+import com.ruckus.agent.core.AgentAction
 
 object AccessibilitySelectors {
     fun flatten(root: AccessibilityNodeInfo?): List<UiNodeSnapshot> {
@@ -48,5 +49,28 @@ object AccessibilitySelectors {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
         return focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    }
+
+    /**
+     * Executes semantic scrolling on the same uniquely grounded accessibility container admitted
+     * by ReasoningGroundingPolicy. Refuses ambiguous or missing targets instead of falling back to
+     * a screen-coordinate swipe that could move the wrong surface.
+     */
+    fun scrollUnique(root: AccessibilityNodeInfo?, direction: AgentAction.Direction): Boolean {
+        if (root == null) return false
+        val candidates = mutableListOf<AccessibilityNodeInfo>()
+
+        fun walk(node: AccessibilityNodeInfo) {
+            if (node.isEnabled && node.isScrollable) candidates += node
+            for (i in 0 until node.childCount) node.getChild(i)?.let(::walk)
+        }
+        walk(root)
+
+        if (candidates.size != 1) return false
+        val action = when (direction) {
+            AgentAction.Direction.DOWN -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            AgentAction.Direction.UP -> AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        }
+        return candidates.single().performAction(action)
     }
 }
