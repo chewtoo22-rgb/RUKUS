@@ -50,6 +50,34 @@ class PlanSafetyPreflightTest {
         assertTrue(decision.reason.contains("High-impact semantic action 'delete account'"))
     }
 
+    @Test fun parameterizedHighImpactLabelsRequireConfirmation() {
+        val labels=listOf(
+            "Delete photo",
+            "Send $20.00",
+            "Install update",
+            "Post comment",
+            "Share with Alex",
+            "Call now",
+            "Yes, purchase item"
+        )
+        labels.forEach { label ->
+            assertEquals(label, Risk.CONFIRM, SafetyGate.classify(AgentAction.TapLabel(label)).risk)
+        }
+    }
+
+    @Test fun highImpactMatchingUsesWordBoundaries() {
+        val safeLabels=listOf(
+            "Payment methods",
+            "Installation help",
+            "Sender details",
+            "Postage options",
+            "Callback settings"
+        )
+        safeLabels.forEach { label ->
+            assertEquals(label, Risk.SAFE, SafetyGate.classify(AgentAction.TapLabel(label)).risk)
+        }
+    }
+
     @Test fun approvalAllowsHighImpactSemanticTap() {
         val decision=PlanSafetyPreflight.evaluate(
             listOf(AgentAction.TapLabel("Send")),
