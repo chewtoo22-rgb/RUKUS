@@ -16,6 +16,28 @@ object ReasoningPlanGateway {
         val allowed: Boolean get() = proposal != null && error == null
     }
 
+    /**
+     * A deliberately narrow handoff produced only after the proposal has been revalidated against
+     * the current UI observation immediately before execution.
+     *
+     * The grant copies the canonical admitted actions so callers cannot mutate the proposal's list
+     * after freshness/integrity validation and then execute a different plan.
+     */
+    data class ExecutionGrant internal constructor(
+        val goal: String,
+        val actions: List<AgentAction>,
+        val proposalFingerprint: String,
+        val observationFingerprint: String,
+        val grantedAtEpochMs: Long,
+    )
+
+    data class ExecutionResult(
+        val grant: ExecutionGrant? = null,
+        val error: String? = null,
+    ) {
+        val allowed: Boolean get() = grant != null && error == null
+    }
+
     fun propose(
         goal: String,
         observation: String?,
@@ -39,6 +61,39 @@ object ReasoningPlanGateway {
                     error = "Observed reasoning proposal rejected: ${it.message ?: "unknown admission failure"}"
                 )
             },
+        )
+    }
+
+    /**
+     * Mandatory execution handoff for reasoning proposals.
+     *
+     * This reruns the full ObservedPlanFreshnessGate immediately before any autonomous action list
+     * is exposed for execution. Stale UI, expired leases, changed actions, changed goal metadata,
+     * failed grounding, or any other proposal-integrity regression fails closed and requires a new
+     * inspection + proposal.
+     */
+    fun authorizeForExecution(
+        proposal: ObservedPlanProposal,
+        currentObservation: String?,
+        nowEpochMs: Long = System.currentTimeMillis(),
+    ): ExecutionResult {
+        val freshness = ObservedPlanFreshnessGate.evaluate(
+            proposal = proposal,
+            currentObservation = currentObservation,
+            nowEpochMs = nowEpochMs,
+        )
+        if (!freshness.allowed) {
+            return ExecutionResult(error = "Reasoning execution authorization rejected: ${freshness.reason}")
+        }
+
+        return ExecutionResult(
+            grant = ExecutionGrant(
+                goal = proposal.goal,
+                actions = proposal.actions.toList(),
+                proposalFingerprint = proposal.proposalFingerprint,
+                observationFingerprint = proposal.observationFingerprint,
+                grantedAtEpochMs = nowEpochMs,
+            )
         )
     }
 }
