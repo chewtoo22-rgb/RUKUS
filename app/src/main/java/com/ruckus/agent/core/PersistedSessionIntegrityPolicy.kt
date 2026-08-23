@@ -8,13 +8,19 @@ data class PersistedSessionIntegrityDecision(
 /**
  * Validates persisted executor checkpoints before resume logic is allowed to trust them.
  * SharedPreferences is durable storage, not a trusted execution authority: malformed,
- * partially-written, legacy, or externally-modified state must fail closed instead of
- * creating impossible step indices or bypassing resume invariants.
+ * partially-written, legacy, or corrupted state must fail closed instead of creating
+ * impossible step indices or bypassing resume invariants.
  */
 object PersistedSessionIntegrityPolicy {
     fun evaluate(session: PersistedTaskSession): PersistedSessionIntegrityDecision {
         if (session.schemaVersion != PERSISTED_SESSION_SCHEMA_VERSION) {
             return reject("Persisted task schema version is unsupported")
+        }
+        if (session.checkpointDigest.isNullOrBlank()) {
+            return reject("Persisted task checkpoint has no integrity digest")
+        }
+        if (!PersistedSessionDigest.matches(session)) {
+            return reject("Persisted task checkpoint integrity digest does not match")
         }
         if (session.request.isBlank()) {
             return reject("Persisted task request is blank")
@@ -63,7 +69,7 @@ object PersistedSessionIntegrityPolicy {
             }
         }
 
-        return PersistedSessionIntegrityDecision(true, "Persisted task checkpoint is structurally valid")
+        return PersistedSessionIntegrityDecision(true, "Persisted task checkpoint is structurally valid and corruption-free")
     }
 
     private fun reject(reason: String) = PersistedSessionIntegrityDecision(false, reason)
