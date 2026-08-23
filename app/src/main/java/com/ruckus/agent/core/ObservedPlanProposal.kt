@@ -4,11 +4,6 @@ import java.security.MessageDigest
 
 /**
  * Binds a bounded plan proposal to the exact UI observation it was derived from.
- *
- * A future reasoning planner may propose typed AgentActions, but those actions must not be
- * executed against a different screen than the one the planner inspected. This gate gives the
- * inspect -> plan boundary deterministic freshness, proposal-integrity, and short-lived lease
- * checks before execution.
  */
 data class ObservedPlanProposal(
     val goal: String,
@@ -139,11 +134,11 @@ data class ObservedPlanProposal(
  * Deterministically binds mutations that cannot be authorized by UI structure alone to explicit
  * user intent in the goal.
  *
- * Brightness and media-volume changes do not have a UI target that ReasoningGroundingPolicy can
- * prove. Back and Home are global navigation primitives rather than semantic controls in the
- * inspected node tree. TypeText is structurally grounded to a safe focused field, but the field
- * itself cannot prove what content the user intended to enter. A reasoning planner may therefore
- * use these actions only when the goal explicitly authorizes the exact operation/content.
+ * High-impact semantic taps have two independent requirements: the SafetyGate still requires
+ * confirmation immediately before execution, and this policy requires the planner to prove that
+ * the exact high-impact control label was explicitly requested in the original goal. This prevents
+ * a reasoning model from introducing a destructive or externally visible side effect merely
+ * because a dangerous button happens to be visible.
  */
 object ReasoningIntentBindingPolicy {
     data class Decision(val allowed: Boolean, val reason: String)
@@ -157,6 +152,8 @@ object ReasoningIntentBindingPolicy {
                     .contains(action.percent)
                 is AgentAction.SetMediaVolume -> requestedVolumeValues(goal).contains(action.percent)
                 is AgentAction.TypeText -> requestsExactText(goal, action.text)
+                is AgentAction.TapLabel -> !SafetyGate.requiresSemanticConfirmation(action.label) ||
+                    requestsExactHighImpactTap(goal, action.label)
                 AgentAction.Back -> requestsBackNavigation(goal)
                 AgentAction.Home -> requestsHomeNavigation(goal)
                 else -> true
@@ -167,6 +164,7 @@ object ReasoningIntentBindingPolicy {
                     is AgentAction.SetBrightness -> "brightness changes require the goal to explicitly request the exact target value"
                     is AgentAction.SetMediaVolume -> "media volume changes require the goal to explicitly request the exact target value"
                     is AgentAction.TypeText -> "text entry requires the exact text payload to appear in the user goal"
+                    is AgentAction.TapLabel -> "high-impact semantic taps require the exact control label to appear in the user goal before confirmation can authorize execution"
                     AgentAction.Back -> "Back navigation requires an explicit request to go back or return to the previous screen"
                     AgentAction.Home -> "Home navigation requires an explicit request to go to or return to the Home screen"
                     else -> "action requires explicit goal intent"
@@ -181,6 +179,14 @@ object ReasoningIntentBindingPolicy {
     internal fun requestsExactText(goal: String, text: String): Boolean {
         if (text.isBlank()) return false
         return goal.contains(text)
+    }
+
+    internal fun requestsExactHighImpactTap(goal: String, label: String): Boolean {
+        val target = SafetyGate.normalizedSemanticLabel(label)
+        if (target.isBlank()) return false
+        val normalizedGoal = SafetyGate.normalizedSemanticLabel(goal)
+        val exactPhrase = Regex("(?<![a-z0-9])${Regex.escape(target)}(?![a-z0-9])")
+        return exactPhrase.containsMatchIn(normalizedGoal)
     }
 
     internal fun requestsBackNavigation(goal: String): Boolean {
