@@ -10,6 +10,7 @@ package com.ruckus.agent.core
  */
 object ReasoningPlanGateway {
     const val MAX_EXECUTION_GRANT_AGE_MS = 2_000L
+    const val MAX_DISPATCH_GRANT_AGE_MS = 500L
 
     data class ProposalResult(
         val proposal: ObservedPlanProposal? = null,
@@ -46,6 +47,9 @@ object ReasoningPlanGateway {
      * Final dispatch envelope. Only actions that pass the whole-plan safety preflight may reach
      * this envelope. Confirmation-gated reasoning actions are deliberately not exposed here; they
      * must continue through the executor's persisted, action-bound confirmation path.
+     *
+     * The dispatch fingerprint and short controller lease close the final handoff race: callers
+     * cannot hold or alter a grant after authorization and then dispatch it against a changed UI.
      */
     data class DispatchGrant internal constructor(
         val goal: String,
@@ -54,6 +58,7 @@ object ReasoningPlanGateway {
         val observationFingerprint: String,
         val planFingerprint: String,
         val authorizedAtEpochMs: Long,
+        val dispatchFingerprint: String,
     )
 
     data class DispatchResult(
@@ -63,6 +68,13 @@ object ReasoningPlanGateway {
         val confirmationActionFingerprint: String? = null,
     ) {
         val allowed: Boolean get() = grant != null && error == null && !needsConfirmation
+    }
+
+    data class ControllerDispatchResult(
+        val actions: List<AgentAction> = emptyList(),
+        val error: String? = null,
+    ) {
+        val allowed: Boolean get() = actions.isNotEmpty() && error == null
     }
 
     fun propose(
@@ -210,6 +222,13 @@ object ReasoningPlanGateway {
             return DispatchResult(error = "Reasoning dispatch rejected by safety preflight: ${safety.reason}")
         }
 
+        val dispatchFingerprint = dispatchGrantFingerprint(
+            goal = executionGrant.goal,
+            proposalFingerprint = executionGrant.proposalFingerprint,
+            observationFingerprint = executionGrant.observationFingerprint,
+            planFingerprint = executionGrant.planFingerprint,
+            authorizedAtEpochMs = nowEpochMs,
+        )
         return DispatchResult(
             grant = DispatchGrant(
                 goal = executionGrant.goal,
@@ -218,8 +237,73 @@ object ReasoningPlanGateway {
                 observationFingerprint = executionGrant.observationFingerprint,
                 planFingerprint = executionGrant.planFingerprint,
                 authorizedAtEpochMs = nowEpochMs,
+                dispatchFingerprint = dispatchFingerprint,
             )
         )
+    }
+
+    /**
+     * Last-mile controller handoff. A DispatchGrant is not a bearer token with an indefinite life:
+     * it must be consumed quickly, against the same observation, with the same exact plan and
+     * safety classification. Any delay, UI drift, metadata/action mutation, or confirmation-policy
+     * change fails closed and requires a fresh authorization cycle.
+     */
+    fun authorizeControllerDispatch(
+        dispatchGrant: DispatchGrant,
+        currentObservation: String?,
+        nowEpochMs: Long = System.currentTimeMillis(),
+    ): ControllerDispatchResult {
+        if (nowEpochMs < dispatchGrant.authorizedAtEpochMs) {
+            return ControllerDispatchResult(error = "Controller dispatch rejected: dispatch grant timestamp is in the future; re-inspect and replan")
+        }
+        if (nowEpochMs - dispatchGrant.authorizedAtEpochMs > MAX_DISPATCH_GRANT_AGE_MS) {
+            return ControllerDispatchResult(error = "Controller dispatch rejected: dispatch grant expired; re-inspect and replan")
+        }
+
+        val expectedDispatchFingerprint = dispatchGrantFingerprint(
+            goal = dispatchGrant.goal,
+            proposalFingerprint = dispatchGrant.proposalFingerprint,
+            observationFingerprint = dispatchGrant.observationFingerprint,
+            planFingerprint = dispatchGrant.planFingerprint,
+            authorizedAtEpochMs = dispatchGrant.authorizedAtEpochMs,
+        )
+        if (expectedDispatchFingerprint != dispatchGrant.dispatchFingerprint) {
+            return ControllerDispatchResult(error = "Controller dispatch rejected: dispatch grant metadata changed after authorization")
+        }
+
+        val normalized = ObservedPlanProposal.normalizeObservation(currentObservation)
+            ?: return ControllerDispatchResult(error = "Controller dispatch rejected: current UI observation is missing or not package-aware")
+        if (ObservedPlanProposal.fingerprint(normalized) != dispatchGrant.observationFingerprint) {
+            return ControllerDispatchResult(error = "Controller dispatch rejected: UI changed after dispatch authorization; re-inspect and replan")
+        }
+
+        val actions = dispatchGrant.actions.toList()
+        val admission = PlanAdmissionPolicy.evaluate(actions)
+        if (!admission.allowed) {
+            return ControllerDispatchResult(error = "Controller dispatch rejected: plan no longer passes admission: ${admission.reason}")
+        }
+        val reasoningAdmission = ReasoningPlanPolicy.evaluate(actions)
+        if (!reasoningAdmission.allowed) {
+            return ControllerDispatchResult(error = "Controller dispatch rejected: plan no longer passes reasoning admission: ${reasoningAdmission.reason}")
+        }
+        val intentBinding = ReasoningIntentBindingPolicy.evaluate(dispatchGrant.goal, actions)
+        if (!intentBinding.allowed) {
+            return ControllerDispatchResult(error = "Controller dispatch rejected: plan no longer matches explicit goal intent: ${intentBinding.reason}")
+        }
+        val grounding = ReasoningGroundingPolicy.evaluate(actions, normalized)
+        if (!grounding.allowed) {
+            return ControllerDispatchResult(error = "Controller dispatch rejected: plan no longer passes UI grounding: ${grounding.reason}")
+        }
+        val currentPlanFingerprint = PlanFingerprint.of(CommandPlanner.Plan(actions, emptyList()))
+        if (currentPlanFingerprint != dispatchGrant.planFingerprint) {
+            return ControllerDispatchResult(error = "Controller dispatch rejected: actions changed after dispatch authorization")
+        }
+        val safety = PlanSafetyPreflight.evaluate(actions)
+        if (!safety.allowed) {
+            return ControllerDispatchResult(error = "Controller dispatch rejected by safety preflight: ${safety.reason}")
+        }
+
+        return ControllerDispatchResult(actions = actions)
     }
 
     internal fun executionGrantFingerprint(
@@ -235,6 +319,22 @@ object ReasoningPlanGateway {
             observationFingerprint,
             planFingerprint,
             grantedAtEpochMs.toString(),
+        ).joinToString("\u001f")
+    )
+
+    internal fun dispatchGrantFingerprint(
+        goal: String,
+        proposalFingerprint: String,
+        observationFingerprint: String,
+        planFingerprint: String,
+        authorizedAtEpochMs: Long,
+    ): String = ObservedPlanProposal.fingerprint(
+        listOf(
+            goal,
+            proposalFingerprint,
+            observationFingerprint,
+            planFingerprint,
+            authorizedAtEpochMs.toString(),
         ).joinToString("\u001f")
     )
 }
