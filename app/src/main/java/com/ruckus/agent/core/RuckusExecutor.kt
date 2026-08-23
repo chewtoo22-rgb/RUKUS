@@ -71,8 +71,9 @@ class RuckusExecutor(context:Context){
         val prior=sessions.load()
         val initialScreen=if(resumed) prior?.lastScreenSummary else null
         var recoveryAttempts=if(resumed) prior?.recoveryAttempts ?: 0 else 0
+        val approvedActionFingerprint=resolveApprovedActionFingerprint(request,plan,approved,prior)
 
-        val preflight=PlanSafetyPreflight.evaluate(plan.actions,startStep,approved)
+        val preflight=PlanSafetyPreflight.evaluate(plan.actions,startStep,approved,approvedActionFingerprint)
         if(!preflight.allowed) {
             val action=preflight.action
             val index=preflight.actionIndex ?: startStep
@@ -107,8 +108,8 @@ class RuckusExecutor(context:Context){
             setState(AgentTaskState(request,index,plan.actions.size,action,before,recoveryAttempts,AgentTaskState.Status.RUNNING))
             val decision=SafetyGate.classify(action)
             if(decision.risk==Risk.BLOCKED) return terminalFailure(request,index,plan.actions.size,action,decision.reason,recoveryAttempts)
-            if(decision.risk==Risk.CONFIRM&&!approved) {
-                ActionAudit.record(request,action,"AWAITING_CONFIRMATION")
+            if(decision.risk==Risk.CONFIRM && (!approved || approvedActionFingerprint!=PlanSafetyPreflight.approvalFingerprint(action))) {
+                ActionAudit.record(request,action,"AWAITING_ACTION_BOUND_CONFIRMATION")
                 setState(AgentTaskState(request,index,plan.actions.size,action,before,recoveryAttempts,AgentTaskState.Status.WAITING_CONFIRMATION))
                 return ExecutionReport(false,decision.reason,action,true,index,plan.actions.size,recoveryAttempts>0)
             }
@@ -235,6 +236,22 @@ class RuckusExecutor(context:Context){
             else -> "${plan.actions.size} actions completed and task completion verified"
         }
         return ExecutionReport(true,msg,plan.actions.last(),false,plan.actions.size,plan.actions.size,recoveryAttempts>0)
+    }
+
+    private fun resolveApprovedActionFingerprint(
+        request:String,
+        plan:CommandPlanner.Plan,
+        approved:Boolean,
+        prior:PersistedTaskSession?
+    ):String? {
+        if(!approved || prior==null) return null
+        val planFingerprint=PlanFingerprint.of(plan)
+        if(prior.status!=AgentTaskState.Status.WAITING_CONFIRMATION) return null
+        if(prior.request!=request || prior.planFingerprint!=planFingerprint) return null
+        val pending=plan.actions.getOrNull(prior.currentStep) ?: return null
+        if(prior.lastAction!=pending.toString()) return null
+        if(SafetyGate.classify(pending).risk!=Risk.CONFIRM) return null
+        return PlanSafetyPreflight.approvalFingerprint(pending)
     }
 
     private fun observeSettled(request:String,action:AgentAction,before:String?):String? {
