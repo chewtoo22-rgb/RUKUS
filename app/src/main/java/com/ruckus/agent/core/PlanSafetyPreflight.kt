@@ -41,6 +41,21 @@ object PlanSafetyPreflight {
             )
         }
 
+        // A high-impact action must terminate the remaining plan. Its effect can radically
+        // change UI/task state, so continuing with pre-planned mutations after approval would
+        // execute against an observation that is no longer trustworthy. Re-inspect/replan instead.
+        if (confirmationIndices.size == 1) {
+            val confirmationIndex = confirmationIndices.single()
+            if (confirmationIndex != actions.lastIndex) {
+                return PlanSafetyPreflightDecision(
+                    allowed = false,
+                    actionIndex = confirmationIndex,
+                    action = actions[confirmationIndex],
+                    reason = "Confirmation-required action must be the final remaining action; re-inspect and replan after the high-impact effect"
+                )
+            }
+        }
+
         for (index in startStep until actions.size) {
             val action = actions[index]
             val decision = SafetyGate.classify(action)
