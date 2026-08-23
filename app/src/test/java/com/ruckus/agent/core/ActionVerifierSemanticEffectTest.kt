@@ -61,6 +61,46 @@ class ActionVerifierSemanticEffectTest {
     }
 
     @Test
+    fun named_app_launch_requires_resolved_package_to_be_foreground() {
+        val action = AgentAction.OpenAppByName("Spotify")
+        val verified = ActionVerifier.verify(
+            action,
+            before,
+            "pkg=com.spotify.music | node[text=Home;clickable=true;enabled=true]",
+            "Opened Spotify package=com.spotify.music",
+        )
+        val wrongForeground = ActionVerifier.verify(
+            action,
+            before,
+            "pkg=com.example.other | node[text=Loading;clickable=false;enabled=true]",
+            "Opened Spotify package=com.spotify.music",
+        )
+
+        assertTrue(verified.ok)
+        assertFalse(wrongForeground.ok)
+    }
+
+    @Test
+    fun named_app_launch_rejects_generic_ui_change_or_missing_resolved_package() {
+        val action = AgentAction.OpenAppByName("Spotify")
+        val genericAck = ActionVerifier.verify(
+            action,
+            before,
+            changed,
+            "Opened Spotify",
+        )
+        val nullAck = ActionVerifier.verify(
+            action,
+            before,
+            changed,
+            null,
+        )
+
+        assertFalse(genericAck.ok)
+        assertFalse(nullAck.ok)
+    }
+
+    @Test
     fun type_text_requires_requested_text_to_newly_appear() {
         val beforeTyping = "pkg=com.example.app | node[text=Message;editable=true;focused=true;enabled=true;sensitive=false]"
         val afterTyping = "pkg=com.example.app | node[text=Hello Miyagi;editable=true;focused=true;enabled=true;sensitive=false]"
