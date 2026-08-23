@@ -9,6 +9,8 @@ package com.ruckus.agent.core
  * proposal-integrity admission path.
  */
 object ReasoningPlanGateway {
+    const val MAX_EXECUTION_GRANT_AGE_MS = 2_000L
+
     data class ProposalResult(
         val proposal: ObservedPlanProposal? = null,
         val error: String? = null,
@@ -28,11 +30,33 @@ object ReasoningPlanGateway {
         val actions: List<AgentAction>,
         val proposalFingerprint: String,
         val observationFingerprint: String,
+        val planFingerprint: String,
         val grantedAtEpochMs: Long,
+        val grantFingerprint: String,
     )
 
     data class ExecutionResult(
         val grant: ExecutionGrant? = null,
+        val error: String? = null,
+    ) {
+        val allowed: Boolean get() = grant != null && error == null
+    }
+
+    /**
+     * Final dispatch envelope. Callers should expose actions to DeviceController only from this
+     * result, after a second observation check immediately before dispatch.
+     */
+    data class DispatchGrant internal constructor(
+        val goal: String,
+        val actions: List<AgentAction>,
+        val proposalFingerprint: String,
+        val observationFingerprint: String,
+        val planFingerprint: String,
+        val authorizedAtEpochMs: Long,
+    )
+
+    data class DispatchResult(
+        val grant: DispatchGrant? = null,
         val error: String? = null,
     ) {
         val allowed: Boolean get() = grant != null && error == null
@@ -86,14 +110,111 @@ object ReasoningPlanGateway {
             return ExecutionResult(error = "Reasoning execution authorization rejected: ${freshness.reason}")
         }
 
+        val grantFingerprint = executionGrantFingerprint(
+            goal = proposal.goal,
+            proposalFingerprint = proposal.proposalFingerprint,
+            observationFingerprint = proposal.observationFingerprint,
+            planFingerprint = proposal.planFingerprint,
+            grantedAtEpochMs = nowEpochMs,
+        )
         return ExecutionResult(
             grant = ExecutionGrant(
                 goal = proposal.goal,
                 actions = proposal.actions.toList(),
                 proposalFingerprint = proposal.proposalFingerprint,
                 observationFingerprint = proposal.observationFingerprint,
+                planFingerprint = proposal.planFingerprint,
                 grantedAtEpochMs = nowEpochMs,
+                grantFingerprint = grantFingerprint,
             )
         )
     }
+
+    /**
+     * Final just-in-time dispatch gate.
+     *
+     * Execution authorization is intentionally short-lived. Before actions are handed to the
+     * controller, the exact current observation, plan identity, goal binding, grounding, and grant
+     * metadata are checked again. A held, copied, mutated, future-dated, or stale grant fails closed
+     * and forces a fresh inspect -> propose -> authorize cycle.
+     */
+    fun authorizeForDispatch(
+        executionGrant: ExecutionGrant,
+        currentObservation: String?,
+        nowEpochMs: Long = System.currentTimeMillis(),
+    ): DispatchResult {
+        if (nowEpochMs < executionGrant.grantedAtEpochMs) {
+            return DispatchResult(error = "Reasoning dispatch rejected: execution grant timestamp is in the future; re-inspect and replan")
+        }
+        if (nowEpochMs - executionGrant.grantedAtEpochMs > MAX_EXECUTION_GRANT_AGE_MS) {
+            return DispatchResult(error = "Reasoning dispatch rejected: execution grant expired; re-inspect and replan")
+        }
+
+        val expectedGrantFingerprint = executionGrantFingerprint(
+            goal = executionGrant.goal,
+            proposalFingerprint = executionGrant.proposalFingerprint,
+            observationFingerprint = executionGrant.observationFingerprint,
+            planFingerprint = executionGrant.planFingerprint,
+            grantedAtEpochMs = executionGrant.grantedAtEpochMs,
+        )
+        if (expectedGrantFingerprint != executionGrant.grantFingerprint) {
+            return DispatchResult(error = "Reasoning dispatch rejected: execution grant metadata changed after authorization")
+        }
+
+        val normalized = ObservedPlanProposal.normalizeObservation(currentObservation)
+            ?: return DispatchResult(error = "Reasoning dispatch rejected: current UI observation is missing or not package-aware")
+        val currentObservationFingerprint = ObservedPlanProposal.fingerprint(normalized)
+        if (currentObservationFingerprint != executionGrant.observationFingerprint) {
+            return DispatchResult(error = "Reasoning dispatch rejected: UI changed after execution authorization; re-inspect and replan")
+        }
+
+        val actions = executionGrant.actions.toList()
+        val admission = PlanAdmissionPolicy.evaluate(actions)
+        if (!admission.allowed) {
+            return DispatchResult(error = "Reasoning dispatch rejected: plan no longer passes admission: ${admission.reason}")
+        }
+        val reasoningAdmission = ReasoningPlanPolicy.evaluate(actions)
+        if (!reasoningAdmission.allowed) {
+            return DispatchResult(error = "Reasoning dispatch rejected: plan no longer passes reasoning admission: ${reasoningAdmission.reason}")
+        }
+        val intentBinding = ReasoningIntentBindingPolicy.evaluate(executionGrant.goal, actions)
+        if (!intentBinding.allowed) {
+            return DispatchResult(error = "Reasoning dispatch rejected: plan no longer matches explicit goal intent: ${intentBinding.reason}")
+        }
+        val grounding = ReasoningGroundingPolicy.evaluate(actions, normalized)
+        if (!grounding.allowed) {
+            return DispatchResult(error = "Reasoning dispatch rejected: plan no longer passes UI grounding: ${grounding.reason}")
+        }
+        val currentPlanFingerprint = PlanFingerprint.of(CommandPlanner.Plan(actions, emptyList()))
+        if (currentPlanFingerprint != executionGrant.planFingerprint) {
+            return DispatchResult(error = "Reasoning dispatch rejected: actions changed after execution authorization")
+        }
+
+        return DispatchResult(
+            grant = DispatchGrant(
+                goal = executionGrant.goal,
+                actions = actions,
+                proposalFingerprint = executionGrant.proposalFingerprint,
+                observationFingerprint = executionGrant.observationFingerprint,
+                planFingerprint = executionGrant.planFingerprint,
+                authorizedAtEpochMs = nowEpochMs,
+            )
+        )
+    }
+
+    internal fun executionGrantFingerprint(
+        goal: String,
+        proposalFingerprint: String,
+        observationFingerprint: String,
+        planFingerprint: String,
+        grantedAtEpochMs: Long,
+    ): String = ObservedPlanProposal.fingerprint(
+        listOf(
+            goal,
+            proposalFingerprint,
+            observationFingerprint,
+            planFingerprint,
+            grantedAtEpochMs.toString(),
+        ).joinToString("\u001f")
+    )
 }
