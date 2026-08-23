@@ -19,6 +19,23 @@ object PlanSafetyPreflight {
             return PlanSafetyPreflightDecision(false, reason = "Invalid plan start step $startStep for ${actions.size} actions")
         }
 
+        // A single boolean approval must never become a blanket authorization for multiple
+        // independent high-impact side effects. Until approvals are represented as durable,
+        // action-bound capabilities, require confirmation-gated operations to be split into
+        // separate tasks so each one receives its own explicit approval boundary.
+        val confirmationIndices = (startStep until actions.size).filter { index ->
+            SafetyGate.classify(actions[index]).risk == Risk.CONFIRM
+        }
+        if (confirmationIndices.size > 1) {
+            val firstIndex = confirmationIndices.first()
+            return PlanSafetyPreflightDecision(
+                allowed = false,
+                actionIndex = firstIndex,
+                action = actions[firstIndex],
+                reason = "Plan contains ${confirmationIndices.size} confirmation-required actions; split high-impact operations into separate tasks so each receives explicit approval"
+            )
+        }
+
         for (index in startStep until actions.size) {
             val action = actions[index]
             val decision = SafetyGate.classify(action)
