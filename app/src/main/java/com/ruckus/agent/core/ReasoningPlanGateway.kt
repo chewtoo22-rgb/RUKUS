@@ -43,8 +43,9 @@ object ReasoningPlanGateway {
     }
 
     /**
-     * Final dispatch envelope. Callers should expose actions to DeviceController only from this
-     * result, after a second observation check immediately before dispatch.
+     * Final dispatch envelope. Only actions that pass the whole-plan safety preflight may reach
+     * this envelope. Confirmation-gated reasoning actions are deliberately not exposed here; they
+     * must continue through the executor's persisted, action-bound confirmation path.
      */
     data class DispatchGrant internal constructor(
         val goal: String,
@@ -58,8 +59,10 @@ object ReasoningPlanGateway {
     data class DispatchResult(
         val grant: DispatchGrant? = null,
         val error: String? = null,
+        val needsConfirmation: Boolean = false,
+        val confirmationActionFingerprint: String? = null,
     ) {
-        val allowed: Boolean get() = grant != null && error == null
+        val allowed: Boolean get() = grant != null && error == null && !needsConfirmation
     }
 
     fun propose(
@@ -134,9 +137,10 @@ object ReasoningPlanGateway {
      * Final just-in-time dispatch gate.
      *
      * Execution authorization is intentionally short-lived. Before actions are handed to the
-     * controller, the exact current observation, plan identity, goal binding, grounding, and grant
-     * metadata are checked again. A held, copied, mutated, future-dated, or stale grant fails closed
-     * and forces a fresh inspect -> propose -> authorize cycle.
+     * controller, the exact current observation, plan identity, goal binding, grounding, grant
+     * metadata, and whole-plan safety classification are checked again. A held, copied, mutated,
+     * future-dated, stale, blocked, or confirmation-gated grant fails closed and forces either a
+     * fresh inspect -> propose -> authorize cycle or the executor's explicit confirmation path.
      */
     fun authorizeForDispatch(
         executionGrant: ExecutionGrant,
@@ -188,6 +192,22 @@ object ReasoningPlanGateway {
         val currentPlanFingerprint = PlanFingerprint.of(CommandPlanner.Plan(actions, emptyList()))
         if (currentPlanFingerprint != executionGrant.planFingerprint) {
             return DispatchResult(error = "Reasoning dispatch rejected: actions changed after execution authorization")
+        }
+
+        // Defense-in-depth at the final controller boundary. Reasoning dispatch may expose only
+        // wholly SAFE plans. High-impact actions must flow through RuckusExecutor so its persisted,
+        // action-bound approval checkpoint is the only way to authorize a confirmation-required
+        // side effect; a caller cannot bypass that contract by presenting a computable fingerprint.
+        val safety = PlanSafetyPreflight.evaluate(actions)
+        if (!safety.allowed) {
+            if (safety.needsConfirmation && safety.action != null) {
+                return DispatchResult(
+                    error = "Reasoning dispatch requires executor confirmation: ${safety.reason}",
+                    needsConfirmation = true,
+                    confirmationActionFingerprint = PlanSafetyPreflight.approvalFingerprint(safety.action),
+                )
+            }
+            return DispatchResult(error = "Reasoning dispatch rejected by safety preflight: ${safety.reason}")
         }
 
         return DispatchResult(
