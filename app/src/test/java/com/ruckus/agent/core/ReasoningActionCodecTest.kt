@@ -63,7 +63,7 @@ class ReasoningActionCodecTest {
         )
 
         assertFalse(result.allowed)
-        assertTrue(result.error.orEmpty().contains("one", ignoreCase = true))
+        assertTrue(result.error.orEmpty().contains("state-changing", ignoreCase = true))
         assertTrue(result.error.orEmpty().contains("replan", ignoreCase = true))
     }
 
