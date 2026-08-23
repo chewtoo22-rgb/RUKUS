@@ -3,23 +3,39 @@ package com.ruckus.agent.core
 import android.content.Context
 import org.json.JSONObject
 
-const val PERSISTED_SESSION_SCHEMA_VERSION = 1
+const val PERSISTED_SESSION_SCHEMA_VERSION = 2
 
 class TaskSessionStore(context: Context) {
     private val prefs = context.getSharedPreferences("ruckus_task_session", Context.MODE_PRIVATE)
 
     fun save(state: AgentTaskState, planFingerprint: String? = null) {
+        val unsigned = PersistedTaskSession(
+            request = state.request,
+            currentStep = state.currentStep,
+            totalSteps = state.totalSteps,
+            lastAction = state.lastAction?.toString(),
+            lastScreenSummary = state.lastScreenSummary,
+            recoveryAttempts = state.recoveryAttempts,
+            status = state.status,
+            savedAtMs = System.currentTimeMillis(),
+            planFingerprint = planFingerprint,
+            schemaVersion = PERSISTED_SESSION_SCHEMA_VERSION,
+            checkpointDigest = null
+        )
+        val session = unsigned.copy(checkpointDigest = PersistedSessionDigest.compute(unsigned))
+
         val json = JSONObject().apply {
-            put("schemaVersion", PERSISTED_SESSION_SCHEMA_VERSION)
-            put("request", state.request)
-            put("currentStep", state.currentStep)
-            put("totalSteps", state.totalSteps)
-            put("lastAction", state.lastAction?.toString())
-            put("lastScreenSummary", state.lastScreenSummary)
-            put("recoveryAttempts", state.recoveryAttempts)
-            put("status", state.status.name)
-            put("planFingerprint", planFingerprint)
-            put("savedAt", System.currentTimeMillis())
+            put("schemaVersion", session.schemaVersion)
+            put("request", session.request)
+            put("currentStep", session.currentStep)
+            put("totalSteps", session.totalSteps)
+            put("lastAction", session.lastAction)
+            put("lastScreenSummary", session.lastScreenSummary)
+            put("recoveryAttempts", session.recoveryAttempts)
+            put("status", session.status.name)
+            put("planFingerprint", session.planFingerprint)
+            put("savedAt", session.savedAtMs)
+            put("checkpointDigest", session.checkpointDigest)
         }
         prefs.edit().putString(KEY, json.toString()).apply()
     }
@@ -38,13 +54,14 @@ class TaskSessionStore(context: Context) {
                 status = AgentTaskState.Status.valueOf(json.optString("status", AgentTaskState.Status.IDLE.name)),
                 savedAtMs = json.optLong("savedAt"),
                 planFingerprint = json.optString("planFingerprint").takeIf { it.isNotBlank() && it != "null" },
-                schemaVersion = json.optInt("schemaVersion", 0)
+                schemaVersion = json.optInt("schemaVersion", 0),
+                checkpointDigest = json.optString("checkpointDigest").takeIf { it.isNotBlank() && it != "null" }
             )
 
             val integrity = PersistedSessionIntegrityPolicy.evaluate(session)
             if (!integrity.allowed) {
                 // Durable storage is not trusted execution authority. Refuse malformed,
-                // impossible, partial, legacy, or externally-modified checkpoints before resume.
+                // impossible, partial, legacy, or corrupted checkpoints before resume.
                 return@runCatching null
             }
 
@@ -76,5 +93,6 @@ data class PersistedTaskSession(
     val status: AgentTaskState.Status,
     val savedAtMs: Long,
     val planFingerprint: String? = null,
-    val schemaVersion: Int = PERSISTED_SESSION_SCHEMA_VERSION
+    val schemaVersion: Int = PERSISTED_SESSION_SCHEMA_VERSION,
+    val checkpointDigest: String? = null
 )
