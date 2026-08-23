@@ -7,20 +7,30 @@ import org.junit.Test
 
 class ReasoningActionCodecTest {
     @Test
-    fun `decodes bounded semantic reasoning actions`() {
+    fun `decodes bounded semantic reasoning action`() {
         val result = ReasoningActionCodec.decode(
-            "OPEN_APP_NAME\tSpotify\nTAP_LABEL\tSearch\nTYPE_TEXT\thello\\nworld"
+            "INSPECT\nTYPE_TEXT\thello\\nworld"
         )
 
         assertTrue(result.allowed)
         assertEquals(
             listOf(
-                AgentAction.OpenAppByName("Spotify"),
-                AgentAction.TapLabel("Search"),
+                AgentAction.InspectScreen,
                 AgentAction.TypeText("hello\nworld"),
             ),
             result.actions,
         )
+    }
+
+    @Test
+    fun `decodes grounded app and semantic tap primitives individually`() {
+        val app = ReasoningActionCodec.decode("OPEN_APP_NAME\tSpotify")
+        val tap = ReasoningActionCodec.decode("TAP_LABEL\tSearch")
+
+        assertTrue(app.allowed)
+        assertEquals(listOf(AgentAction.OpenAppByName("Spotify")), app.actions)
+        assertTrue(tap.allowed)
+        assertEquals(listOf(AgentAction.TapLabel("Search")), tap.actions)
     }
 
     @Test
@@ -47,26 +57,41 @@ class ReasoningActionCodecTest {
     }
 
     @Test
+    fun `rejects multiple state changes from one observation`() {
+        val result = ReasoningActionCodec.decode(
+            "OPEN_APP_NAME\tSpotify\nTAP_LABEL\tSearch"
+        )
+
+        assertFalse(result.allowed)
+        assertTrue(result.error.orEmpty().contains("one", ignoreCase = true))
+        assertTrue(result.error.orEmpty().contains("replan", ignoreCase = true))
+    }
+
+    @Test
     fun `rejects reasoning actions excluded by reasoning policy`() {
         val result = ReasoningActionCodec.decode("OPEN_APP\t")
         assertFalse(result.allowed)
     }
 
     @Test
-    fun `decodes bounded settings and semantic scroll`() {
-        val result = ReasoningActionCodec.decode(
-            "SET_BRIGHTNESS\t42\nSET_MEDIA_VOLUME\t25\nSCROLL_DOWN\nINSPECT"
-        )
+    fun `decodes bounded settings and semantic scroll individually`() {
+        val brightness = ReasoningActionCodec.decode("SET_BRIGHTNESS\t42")
+        val volume = ReasoningActionCodec.decode("SET_MEDIA_VOLUME\t25")
+        val scroll = ReasoningActionCodec.decode("SCROLL_DOWN\nINSPECT")
 
-        assertTrue(result.allowed)
+        assertTrue(brightness.allowed)
+        assertEquals(listOf(AgentAction.SetBrightness(42)), brightness.actions)
+
+        assertTrue(volume.allowed)
+        assertEquals(listOf(AgentAction.SetMediaVolume(25)), volume.actions)
+
+        assertTrue(scroll.allowed)
         assertEquals(
             listOf(
-                AgentAction.SetBrightness(42),
-                AgentAction.SetMediaVolume(25),
                 AgentAction.Scroll(AgentAction.Direction.DOWN),
                 AgentAction.InspectScreen,
             ),
-            result.actions,
+            scroll.actions,
         )
     }
 
