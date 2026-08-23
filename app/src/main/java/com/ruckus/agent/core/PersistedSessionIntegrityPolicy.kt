@@ -13,6 +13,9 @@ data class PersistedSessionIntegrityDecision(
  */
 object PersistedSessionIntegrityPolicy {
     fun evaluate(session: PersistedTaskSession): PersistedSessionIntegrityDecision {
+        if (session.schemaVersion != PERSISTED_SESSION_SCHEMA_VERSION) {
+            return reject("Persisted task schema version is unsupported")
+        }
         if (session.request.isBlank()) {
             return reject("Persisted task request is blank")
         }
