@@ -12,23 +12,54 @@ class PersistedSessionIntegrityPolicyTest {
         recoveryAttempts:Int=0,
         status:AgentTaskState.Status=AgentTaskState.Status.WAITING_CONFIRMATION,
         planFingerprint:String?="plan-fingerprint",
-        schemaVersion:Int=PERSISTED_SESSION_SCHEMA_VERSION
-    ) = PersistedTaskSession(
-        request=request,
-        currentStep=currentStep,
-        totalSteps=totalSteps,
-        lastAction=lastAction,
-        lastScreenSummary="pkg=test\ntext=Continue",
-        recoveryAttempts=recoveryAttempts,
-        status=status,
-        savedAtMs=1_000_000L,
-        planFingerprint=planFingerprint,
-        schemaVersion=schemaVersion
-    )
+        schemaVersion:Int=PERSISTED_SESSION_SCHEMA_VERSION,
+        sign:Boolean=true
+    ): PersistedTaskSession {
+        val unsigned = PersistedTaskSession(
+            request=request,
+            currentStep=currentStep,
+            totalSteps=totalSteps,
+            lastAction=lastAction,
+            lastScreenSummary="pkg=test\ntext=Continue",
+            recoveryAttempts=recoveryAttempts,
+            status=status,
+            savedAtMs=1_000_000L,
+            planFingerprint=planFingerprint,
+            schemaVersion=schemaVersion,
+            checkpointDigest=null
+        )
+        return if (sign) {
+            unsigned.copy(checkpointDigest=PersistedSessionDigest.compute(unsigned))
+        } else {
+            unsigned
+        }
+    }
 
     @Test fun validPendingCheckpointIsAccepted() {
         val decision=PersistedSessionIntegrityPolicy.evaluate(session())
         assertTrue(decision.allowed)
+    }
+
+    @Test fun checkpointWithoutDigestFailsClosed() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(session(sign=false))
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("integrity digest"))
+    }
+
+    @Test fun semanticMutationAfterPersistenceFailsClosed() {
+        val persisted=session()
+        val corrupted=persisted.copy(request="tap Delete")
+        val decision=PersistedSessionIntegrityPolicy.evaluate(corrupted)
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("does not match"))
+    }
+
+    @Test fun stepMutationAfterPersistenceFailsClosed() {
+        val persisted=session(currentStep=0,totalSteps=2)
+        val corrupted=persisted.copy(currentStep=1)
+        val decision=PersistedSessionIntegrityPolicy.evaluate(corrupted)
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("does not match"))
     }
 
     @Test fun legacyCheckpointWithoutCurrentSchemaFailsClosed() {
