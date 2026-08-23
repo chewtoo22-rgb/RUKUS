@@ -3,11 +3,14 @@ package com.ruckus.agent.core
 import android.content.Context
 import org.json.JSONObject
 
+const val PERSISTED_SESSION_SCHEMA_VERSION = 1
+
 class TaskSessionStore(context: Context) {
     private val prefs = context.getSharedPreferences("ruckus_task_session", Context.MODE_PRIVATE)
 
     fun save(state: AgentTaskState, planFingerprint: String? = null) {
         val json = JSONObject().apply {
+            put("schemaVersion", PERSISTED_SESSION_SCHEMA_VERSION)
             put("request", state.request)
             put("currentStep", state.currentStep)
             put("totalSteps", state.totalSteps)
@@ -34,13 +37,14 @@ class TaskSessionStore(context: Context) {
                 recoveryAttempts = json.optInt("recoveryAttempts"),
                 status = AgentTaskState.Status.valueOf(json.optString("status", AgentTaskState.Status.IDLE.name)),
                 savedAtMs = json.optLong("savedAt"),
-                planFingerprint = json.optString("planFingerprint").takeIf { it.isNotBlank() && it != "null" }
+                planFingerprint = json.optString("planFingerprint").takeIf { it.isNotBlank() && it != "null" },
+                schemaVersion = json.optInt("schemaVersion", 0)
             )
 
             val integrity = PersistedSessionIntegrityPolicy.evaluate(session)
             if (!integrity.allowed) {
                 // Durable storage is not trusted execution authority. Refuse malformed,
-                // impossible, partial, or externally-modified checkpoints before resume.
+                // impossible, partial, legacy, or externally-modified checkpoints before resume.
                 return@runCatching null
             }
 
@@ -71,5 +75,6 @@ data class PersistedTaskSession(
     val recoveryAttempts: Int,
     val status: AgentTaskState.Status,
     val savedAtMs: Long,
-    val planFingerprint: String? = null
+    val planFingerprint: String? = null,
+    val schemaVersion: Int = PERSISTED_SESSION_SCHEMA_VERSION
 )
