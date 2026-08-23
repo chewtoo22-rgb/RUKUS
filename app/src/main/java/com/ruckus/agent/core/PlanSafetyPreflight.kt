@@ -14,15 +14,20 @@ data class PlanSafetyPreflightDecision(
  * discovering that a later step is blocked or requires approval.
  */
 object PlanSafetyPreflight {
-    fun evaluate(actions: List<AgentAction>, startStep: Int = 0, approved: Boolean = false): PlanSafetyPreflightDecision {
+    /** Stable semantic capability identifier for one exact confirmation-gated action. */
+    fun approvalFingerprint(action: AgentAction): String = PlanFingerprint.of(listOf(action))
+
+    fun evaluate(
+        actions: List<AgentAction>,
+        startStep: Int = 0,
+        approved: Boolean = false,
+        approvedActionFingerprint: String? = null
+    ): PlanSafetyPreflightDecision {
         if (startStep !in 0..actions.size) {
             return PlanSafetyPreflightDecision(false, reason = "Invalid plan start step $startStep for ${actions.size} actions")
         }
 
-        // A single boolean approval must never become a blanket authorization for multiple
-        // independent high-impact side effects. Until approvals are represented as durable,
-        // action-bound capabilities, require confirmation-gated operations to be split into
-        // separate tasks so each one receives its own explicit approval boundary.
+        // Never let one approval authorize multiple independent high-impact effects.
         val confirmationIndices = (startStep until actions.size).filter { index ->
             SafetyGate.classify(actions[index]).risk == Risk.CONFIRM
         }
@@ -46,13 +51,23 @@ object PlanSafetyPreflight {
                     action = action,
                     reason = "Plan blocked before execution: ${decision.reason}"
                 )
-                Risk.CONFIRM -> if (!approved) return PlanSafetyPreflightDecision(
-                    allowed = false,
-                    actionIndex = index,
-                    action = action,
-                    needsConfirmation = true,
-                    reason = "Plan requires approval before any remaining actions run: ${decision.reason}"
-                )
+                Risk.CONFIRM -> {
+                    val expectedApproval = approvalFingerprint(action)
+                    if (!approved || approvedActionFingerprint != expectedApproval) {
+                        val detail = if (approved && approvedActionFingerprint != null) {
+                            " Approval did not match the exact pending action."
+                        } else {
+                            ""
+                        }
+                        return PlanSafetyPreflightDecision(
+                            allowed = false,
+                            actionIndex = index,
+                            action = action,
+                            needsConfirmation = true,
+                            reason = "Plan requires action-bound approval before any remaining actions run: ${decision.reason}$detail"
+                        )
+                    }
+                }
                 Risk.SAFE -> Unit
             }
         }
