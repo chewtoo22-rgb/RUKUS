@@ -37,6 +37,13 @@ class TaskSessionStore(context: Context) {
                 planFingerprint = json.optString("planFingerprint").takeIf { it.isNotBlank() && it != "null" }
             )
 
+            val integrity = PersistedSessionIntegrityPolicy.evaluate(session)
+            if (!integrity.allowed) {
+                // Durable storage is not trusted execution authority. Refuse malformed,
+                // impossible, partial, or externally-modified checkpoints before resume.
+                return@runCatching null
+            }
+
             if (
                 session.status == AgentTaskState.Status.WAITING_CONFIRMATION &&
                 !ConfirmationLeasePolicy.evaluate(session.savedAtMs).allowed
