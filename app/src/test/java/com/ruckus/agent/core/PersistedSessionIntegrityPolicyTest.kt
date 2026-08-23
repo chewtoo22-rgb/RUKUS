@@ -1,0 +1,98 @@
+package com.ruckus.agent.core
+
+import org.junit.Assert.*
+import org.junit.Test
+
+class PersistedSessionIntegrityPolicyTest {
+    private fun session(
+        request:String="tap Continue",
+        currentStep:Int=0,
+        totalSteps:Int=1,
+        lastAction:String?="TapLabel(label=Continue)",
+        recoveryAttempts:Int=0,
+        status:AgentTaskState.Status=AgentTaskState.Status.WAITING_CONFIRMATION,
+        planFingerprint:String?="plan-fingerprint"
+    ) = PersistedTaskSession(
+        request=request,
+        currentStep=currentStep,
+        totalSteps=totalSteps,
+        lastAction=lastAction,
+        lastScreenSummary="pkg=test\ntext=Continue",
+        recoveryAttempts=recoveryAttempts,
+        status=status,
+        savedAtMs=1_000_000L,
+        planFingerprint=planFingerprint
+    )
+
+    @Test fun validPendingCheckpointIsAccepted() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(session())
+        assertTrue(decision.allowed)
+    }
+
+    @Test fun stepPastPlanEndFailsClosed() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(session(currentStep=2,totalSteps=1))
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("bounds"))
+    }
+
+    @Test fun negativeRecoveryCountFailsClosed() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(session(recoveryAttempts=-1))
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("recovery"))
+    }
+
+    @Test fun recoveryCountBeyondGlobalBudgetFailsClosed() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(
+            session(recoveryAttempts=RecoveryBudget.MAX_TOTAL_ATTEMPTS+1)
+        )
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("recovery"))
+    }
+
+    @Test fun activeCheckpointWithoutPlanFingerprintFailsClosed() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(session(planFingerprint=null))
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("fingerprint"))
+    }
+
+    @Test fun pendingCheckpointWithoutActionIdentityFailsClosed() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(session(lastAction=null))
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("action identity"))
+    }
+
+    @Test fun waitingCheckpointCannotPointAtCompletedPlan() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(session(currentStep=1,totalSteps=1))
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("past the end"))
+    }
+
+    @Test fun completeCheckpointMustAccountForEveryStep() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(
+            session(currentStep=0,totalSteps=1,status=AgentTaskState.Status.COMPLETE)
+        )
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("every action"))
+    }
+
+    @Test fun completeCheckpointAtPlanEndIsAccepted() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(
+            session(currentStep=1,totalSteps=1,status=AgentTaskState.Status.COMPLETE)
+        )
+        assertTrue(decision.allowed)
+    }
+
+    @Test fun failedZeroActionCheckpointRemainsValidForDiagnostics() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(
+            session(
+                request="nonsense",
+                currentStep=0,
+                totalSteps=0,
+                lastAction=null,
+                status=AgentTaskState.Status.FAILED,
+                planFingerprint=null
+            )
+        )
+        assertTrue(decision.allowed)
+    }
+}
