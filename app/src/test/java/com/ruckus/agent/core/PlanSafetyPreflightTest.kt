@@ -96,6 +96,43 @@ class PlanSafetyPreflightTest {
         assertEquals(Risk.SAFE,SafetyGate.classify(AgentAction.TapLabel("Continue")).risk)
     }
 
+    @Test fun multipleConfirmationActionsAreRejectedEvenWhenApproved() {
+        val actions=listOf(
+            AgentAction.TapLabel("Send"),
+            AgentAction.RunApprovedShell("demo")
+        )
+        val decision=PlanSafetyPreflight.evaluate(actions,approved=true)
+        assertFalse(decision.allowed)
+        assertFalse(decision.needsConfirmation)
+        assertEquals(0,decision.actionIndex)
+        assertEquals(AgentAction.TapLabel("Send"),decision.action)
+        assertTrue(decision.reason.contains("2 confirmation-required actions"))
+        assertTrue(decision.reason.contains("separate tasks"))
+    }
+
+    @Test fun multipleHighImpactSemanticActionsAreRejectedWithoutBlanketApproval() {
+        val actions=listOf(
+            AgentAction.Home,
+            AgentAction.TapLabel("Delete photo"),
+            AgentAction.TapLabel("Share with Alex")
+        )
+        val decision=PlanSafetyPreflight.evaluate(actions,approved=true)
+        assertFalse(decision.allowed)
+        assertEquals(1,decision.actionIndex)
+        assertEquals(AgentAction.TapLabel("Delete photo"),decision.action)
+    }
+
+    @Test fun completedConfirmationDoesNotPoisonResumedRemainder() {
+        val actions=listOf(
+            AgentAction.TapLabel("Send"),
+            AgentAction.Home,
+            AgentAction.RunApprovedShell("remaining")
+        )
+        val decision=PlanSafetyPreflight.evaluate(actions,startStep=1,approved=true)
+        assertTrue(decision.allowed)
+        assertFalse(decision.needsConfirmation)
+    }
+
     @Test fun invalidStartStepIsRejected() {
         val actions=listOf(AgentAction.Home)
         assertFalse(PlanSafetyPreflight.evaluate(actions,startStep=-1).allowed)
