@@ -65,6 +65,16 @@ class TaskSessionStore(context: Context) {
                 return@runCatching null
             }
 
+            val resumeLease = SessionResumeLeasePolicy.evaluate(
+                savedAtMs = session.savedAtMs,
+                status = session.status
+            )
+            if (!resumeLease.allowed) {
+                // A crash checkpoint is only evidence for a short-lived resume window. Beyond that
+                // the phone/environment may have changed, so force a fresh task and observation.
+                return@runCatching null
+            }
+
             if (
                 session.status == AgentTaskState.Status.WAITING_CONFIRMATION &&
                 !ConfirmationLeasePolicy.evaluate(session.savedAtMs).allowed
