@@ -100,7 +100,9 @@ class ReasoningPlanGatewayTest {
         assertEquals(proposal.actions, grant.actions)
         assertEquals(proposal.proposalFingerprint, grant.proposalFingerprint)
         assertEquals(proposal.observationFingerprint, grant.observationFingerprint)
+        assertEquals(proposal.planFingerprint, grant.planFingerprint)
         assertEquals(1_500L, grant.grantedAtEpochMs)
+        assertTrue(grant.grantFingerprint.isNotBlank())
     }
 
     @Test
@@ -164,5 +166,131 @@ class ReasoningPlanGatewayTest {
         assertFalse(result.allowed)
         assertTrue(result.grant == null)
         assertTrue(result.error.orEmpty().contains("changed after admission", ignoreCase = true))
+    }
+
+    @Test
+    fun `fresh execution grant receives just in time dispatch grant`() {
+        val proposal = ReasoningPlanGateway.propose(
+            goal = "Continue in the current app",
+            observation = screen,
+            encodedActions = "TAP_LABEL\tContinue",
+            nowEpochMs = 1_000L,
+        ).proposal!!
+        val executionGrant = ReasoningPlanGateway.authorizeForExecution(
+            proposal = proposal,
+            currentObservation = screen,
+            nowEpochMs = 1_500L,
+        ).grant!!
+
+        val dispatch = ReasoningPlanGateway.authorizeForDispatch(
+            executionGrant = executionGrant,
+            currentObservation = screen,
+            nowEpochMs = 1_750L,
+        )
+
+        assertTrue(dispatch.allowed)
+        assertEquals(proposal.actions, dispatch.grant!!.actions)
+        assertEquals(proposal.planFingerprint, dispatch.grant!!.planFingerprint)
+        assertEquals(1_750L, dispatch.grant!!.authorizedAtEpochMs)
+    }
+
+    @Test
+    fun `dispatch rejects changed UI after execution authorization`() {
+        val proposal = ReasoningPlanGateway.propose(
+            goal = "Continue in the current app",
+            observation = screen,
+            encodedActions = "TAP_LABEL\tContinue",
+            nowEpochMs = 1_000L,
+        ).proposal!!
+        val executionGrant = ReasoningPlanGateway.authorizeForExecution(
+            proposal = proposal,
+            currentObservation = screen,
+            nowEpochMs = 1_500L,
+        ).grant!!
+        val changedScreen = "pkg=com.example.app | node[text=Done;clickable=true;enabled=true;editable=false;sensitive=false;focused=false]"
+
+        val dispatch = ReasoningPlanGateway.authorizeForDispatch(
+            executionGrant = executionGrant,
+            currentObservation = changedScreen,
+            nowEpochMs = 1_750L,
+        )
+
+        assertFalse(dispatch.allowed)
+        assertTrue(dispatch.error.orEmpty().contains("UI changed", ignoreCase = true))
+        assertTrue(dispatch.error.orEmpty().contains("replan", ignoreCase = true))
+    }
+
+    @Test
+    fun `dispatch rejects expired execution grant`() {
+        val proposal = ReasoningPlanGateway.propose(
+            goal = "Continue in the current app",
+            observation = screen,
+            encodedActions = "TAP_LABEL\tContinue",
+            nowEpochMs = 1_000L,
+        ).proposal!!
+        val executionGrant = ReasoningPlanGateway.authorizeForExecution(
+            proposal = proposal,
+            currentObservation = screen,
+            nowEpochMs = 1_500L,
+        ).grant!!
+
+        val dispatch = ReasoningPlanGateway.authorizeForDispatch(
+            executionGrant = executionGrant,
+            currentObservation = screen,
+            nowEpochMs = 1_500L + ReasoningPlanGateway.MAX_EXECUTION_GRANT_AGE_MS + 1L,
+        )
+
+        assertFalse(dispatch.allowed)
+        assertTrue(dispatch.error.orEmpty().contains("expired", ignoreCase = true))
+    }
+
+    @Test
+    fun `dispatch rejects execution grant metadata tampering`() {
+        val proposal = ReasoningPlanGateway.propose(
+            goal = "Continue in the current app",
+            observation = screen,
+            encodedActions = "TAP_LABEL\tContinue",
+            nowEpochMs = 1_000L,
+        ).proposal!!
+        val executionGrant = ReasoningPlanGateway.authorizeForExecution(
+            proposal = proposal,
+            currentObservation = screen,
+            nowEpochMs = 1_500L,
+        ).grant!!
+        val tampered = executionGrant.copy(goal = "Different goal")
+
+        val dispatch = ReasoningPlanGateway.authorizeForDispatch(
+            executionGrant = tampered,
+            currentObservation = screen,
+            nowEpochMs = 1_750L,
+        )
+
+        assertFalse(dispatch.allowed)
+        assertTrue(dispatch.error.orEmpty().contains("metadata changed", ignoreCase = true))
+    }
+
+    @Test
+    fun `dispatch rejects action mutation after execution authorization`() {
+        val proposal = ReasoningPlanGateway.propose(
+            goal = "Continue in the current app",
+            observation = screen,
+            encodedActions = "TAP_LABEL\tContinue",
+            nowEpochMs = 1_000L,
+        ).proposal!!
+        val executionGrant = ReasoningPlanGateway.authorizeForExecution(
+            proposal = proposal,
+            currentObservation = screen,
+            nowEpochMs = 1_500L,
+        ).grant!!
+        val tampered = executionGrant.copy(actions = listOf(AgentAction.InspectScreen))
+
+        val dispatch = ReasoningPlanGateway.authorizeForDispatch(
+            executionGrant = tampered,
+            currentObservation = screen,
+            nowEpochMs = 1_750L,
+        )
+
+        assertFalse(dispatch.allowed)
+        assertTrue(dispatch.error.orEmpty().contains("actions changed", ignoreCase = true))
     }
 }
