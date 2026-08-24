@@ -67,6 +67,14 @@ object PersistedSessionIntegrityPolicy {
             if (session.lastAction.isNullOrBlank()) {
                 return reject("Complete checkpoint has no terminal action identity")
             }
+            if (session.completionEvidenceDigest.isNullOrBlank()) {
+                return reject("Complete checkpoint has no completion evidence digest")
+            }
+            if (!TaskCompletionEvidence.matches(session)) {
+                return reject("Complete checkpoint completion evidence does not match terminal state")
+            }
+        } else if (!session.completionEvidenceDigest.isNullOrBlank()) {
+            return reject("Non-complete checkpoint carries stale completion evidence")
         }
 
         return PersistedSessionIntegrityDecision(true, "Persisted task checkpoint is structurally valid and corruption-free")
