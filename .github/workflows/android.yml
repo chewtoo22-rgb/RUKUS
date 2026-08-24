@@ -20,7 +20,13 @@ jobs:
         run: gradle :app:testDebugUnitTest --stacktrace
       - name: Build APK
         run: gradle :app:assembleDebug --stacktrace
+      - name: Build instrumentation test APK
+        run: gradle :app:assembleDebugAndroidTest --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: RUKUS-executor-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RUKUS-device-smoke-test
+          path: app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
