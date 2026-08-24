@@ -67,6 +67,36 @@ class TaskSessionStoreDeviceTest {
     }
 
     @Test
+    fun completedTaskEvidenceSurvivesDurableRoundTrip() {
+        val state = AgentTaskState(
+            request = "open settings then go home",
+            currentStep = 2,
+            totalSteps = 2,
+            lastAction = AgentAction.Home,
+            lastScreenSummary = "pkg=com.android.launcher | screen=Home | verified=true",
+            recoveryAttempts = 1,
+            status = AgentTaskState.Status.COMPLETED
+        )
+
+        store.save(state, planFingerprint = "device-test-completed-plan")
+
+        // Re-open through a fresh store instance to model the app process reading
+        // terminal evidence after relaunch rather than relying on in-memory state.
+        val reloaded = TaskSessionStore(context).load()
+        assertNotNull(reloaded)
+        reloaded!!
+        assertEquals(AgentTaskState.Status.COMPLETED, reloaded.status)
+        assertEquals(state.request, reloaded.request)
+        assertEquals(state.totalSteps, reloaded.currentStep)
+        assertEquals(state.totalSteps, reloaded.totalSteps)
+        assertEquals(state.recoveryAttempts, reloaded.recoveryAttempts)
+        assertEquals(state.lastAction.toString(), reloaded.lastAction)
+        assertEquals(state.lastScreenSummary, reloaded.lastScreenSummary)
+        assertEquals("device-test-completed-plan", reloaded.planFingerprint)
+        assertTrue(PersistedSessionDigest.matches(reloaded))
+    }
+
+    @Test
     fun tamperedDurableCheckpointFailsClosed() {
         val state = AgentTaskState(
             request = "home",
