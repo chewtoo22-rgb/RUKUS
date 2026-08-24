@@ -36,4 +36,25 @@ class CrashRecoveryPolicyTest {
         assertEquals(0,decision.startStep)
         assertTrue(decision.reason.contains("in-flight",ignoreCase=true))
     }
+
+    @Test fun executingRecoveryAlternateCannotBeReconciledAsOriginalPlanAction() {
+        val plan=CommandPlanner.plan("open Spotify then volume 25")
+        val session=PersistedTaskSession(
+            request="open Spotify then volume 25",
+            currentStep=1,
+            totalSteps=2,
+            lastAction=AgentAction.InspectScreen.toString(),
+            lastScreenSummary="pkg=com.spotify.music",
+            recoveryAttempts=1,
+            status=AgentTaskState.Status.EXECUTING,
+            savedAtMs=1L,
+            planFingerprint=PlanFingerprint.of(plan)
+        )
+
+        val decision=ResumePolicy.decide(session,plan)
+
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("differs",ignoreCase=true))
+        assertTrue(decision.reason.contains("fresh user request",ignoreCase=true))
+    }
 }
