@@ -38,6 +38,28 @@ class ScreenObservationSettlerDeviceTest {
     }
 
     @Test
+    fun unstableChangedFramesCannotBecomeVerificationEvidence() {
+        val before = "pkg=com.example.old | screen=Before"
+        val samples = ArrayDeque(listOf(
+            "pkg=com.example.next | screen=Loading",
+            "pkg=com.example.next | screen=Intermediate",
+            "pkg=com.example.next | screen=AlmostThere"
+        ))
+
+        val result = ScreenObservationSettler.observe(
+            before = before,
+            maxSamples = 3,
+            requiredStableSamples = 2,
+            sampler = { samples.removeFirst() }
+        )
+
+        assertFalse(result.stable)
+        assertTrue(result.changedFromBefore)
+        assertEquals(3, result.samples)
+        assertEquals(before, result.screen)
+    }
+
+    @Test
     fun twoStablePostChangeSnapshotsAreAccepted() {
         val samples = ArrayDeque(listOf(
             "pkg=com.example.old | screen=Before",
