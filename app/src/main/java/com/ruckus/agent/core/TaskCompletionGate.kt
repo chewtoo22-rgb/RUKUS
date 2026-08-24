@@ -15,12 +15,13 @@ object TaskCompletionGate {
         val last=plan.actions.last()
         return when(last) {
             is AgentAction.OpenApp -> {
-                if(finalScreen?.contains("pkg=${last.packageName}",ignoreCase=true)==true)
+                val observedPkg = foregroundPackage(finalScreen)
+                if(observedPkg.equals(last.packageName, ignoreCase = true))
                     CompletionDecision(true,"Final foreground package matches requested app")
                 else CompletionDecision(false,"Requested app is not confirmed in the final foreground state")
             }
             is AgentAction.OpenAppByName -> {
-                if(finalScreen?.contains("pkg=",ignoreCase=true)==true)
+                if(foregroundPackage(finalScreen) != null)
                     CompletionDecision(true,"Final foreground app state is observable")
                 else CompletionDecision(false,"Final foreground app could not be observed")
             }
@@ -39,5 +40,17 @@ object TaskCompletionGate {
             is AgentAction.SetBrightness, is AgentAction.SetMediaVolume,
             is AgentAction.RunApprovedShell -> CompletionDecision(true,"Terminal action was already verified by its action-specific verifier")
         }
+    }
+
+    private fun foregroundPackage(observation:String?):String? {
+        if(observation == null) return null
+        val marker = "pkg="
+        val start = observation.indexOf(marker)
+        if(start < 0) return null
+        val valueStart = start + marker.length
+        return observation.substring(valueStart)
+            .takeWhile { !it.isWhitespace() && it != '|' }
+            .trim()
+            .takeIf { it.isNotEmpty() }
     }
 }
