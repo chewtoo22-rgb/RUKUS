@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -75,6 +76,46 @@ class LongChainResumeDeviceTest {
         assertEquals(
             "Recovery attempt 3/${RecoveryBudget.MAX_TOTAL_ATTEMPTS} allowed",
             remainingBudget.reason
+        )
+    }
+
+    @Test
+    fun exhaustedRecoveryBudgetStaysExhaustedAcrossPersistenceAndResume() {
+        val request = "home then back then home then back"
+        val plan = CommandPlanner.plan(request)
+        assertTrue(plan.rejectedParts.isEmpty())
+
+        // Once the task-wide recovery budget is exhausted, process death must not
+        // create a fresh allowance. Resume may preserve the checkpoint evidence,
+        // but the next recovery admission remains denied until a fresh user goal.
+        val state = AgentTaskState(
+            request = request,
+            currentStep = 2,
+            totalSteps = plan.actions.size,
+            lastAction = plan.actions[1],
+            lastScreenSummary = "pkg=com.android.launcher | screen=Home | recoveryBudget=exhausted",
+            recoveryAttempts = RecoveryBudget.MAX_TOTAL_ATTEMPTS,
+            status = AgentTaskState.Status.RUNNING
+        )
+        val fingerprint = PlanFingerprint.of(plan)
+        store.save(state, planFingerprint = fingerprint)
+
+        val reloaded = TaskSessionStore(context).load()
+        assertNotNull(reloaded)
+        reloaded!!
+        assertEquals(RecoveryBudget.MAX_TOTAL_ATTEMPTS, reloaded.recoveryAttempts)
+        assertEquals(fingerprint, reloaded.planFingerprint)
+        assertTrue(PersistedSessionDigest.matches(reloaded))
+
+        val resume = ResumePolicy.decide(reloaded, CommandPlanner.plan(reloaded.request))
+        assertTrue(resume.allowed)
+        assertEquals(2, resume.startStep)
+
+        val exhausted = RecoveryBudget.decide(reloaded.recoveryAttempts)
+        assertFalse(exhausted.allowed)
+        assertEquals(
+            "Recovery budget exhausted (${RecoveryBudget.MAX_TOTAL_ATTEMPTS}/${RecoveryBudget.MAX_TOTAL_ATTEMPTS})",
+            exhausted.reason
         )
     }
 }
