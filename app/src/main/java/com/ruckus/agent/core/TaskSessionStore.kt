@@ -3,13 +3,13 @@ package com.ruckus.agent.core
 import android.content.Context
 import org.json.JSONObject
 
-const val PERSISTED_SESSION_SCHEMA_VERSION = 2
+const val PERSISTED_SESSION_SCHEMA_VERSION = 3
 
 class TaskSessionStore(context: Context) {
     private val prefs = context.getSharedPreferences("ruckus_task_session", Context.MODE_PRIVATE)
 
     fun save(state: AgentTaskState, planFingerprint: String? = null) {
-        val unsigned = PersistedTaskSession(
+        val base = PersistedTaskSession(
             request = state.request,
             currentStep = state.currentStep,
             totalSteps = state.totalSteps,
@@ -20,9 +20,17 @@ class TaskSessionStore(context: Context) {
             savedAtMs = System.currentTimeMillis(),
             planFingerprint = planFingerprint,
             schemaVersion = PERSISTED_SESSION_SCHEMA_VERSION,
+            completionEvidenceDigest = null,
             checkpointDigest = null
         )
-        val session = unsigned.copy(checkpointDigest = PersistedSessionDigest.compute(unsigned))
+        val withCompletionEvidence = if (state.status == AgentTaskState.Status.COMPLETE) {
+            base.copy(completionEvidenceDigest = TaskCompletionEvidence.compute(base))
+        } else {
+            base
+        }
+        val session = withCompletionEvidence.copy(
+            checkpointDigest = PersistedSessionDigest.compute(withCompletionEvidence)
+        )
 
         val json = JSONObject().apply {
             put("schemaVersion", session.schemaVersion)
@@ -35,6 +43,7 @@ class TaskSessionStore(context: Context) {
             put("status", session.status.name)
             put("planFingerprint", session.planFingerprint)
             put("savedAt", session.savedAtMs)
+            put("completionEvidenceDigest", session.completionEvidenceDigest)
             put("checkpointDigest", session.checkpointDigest)
         }
 
@@ -62,6 +71,7 @@ class TaskSessionStore(context: Context) {
                 savedAtMs = json.optLong("savedAt"),
                 planFingerprint = json.optString("planFingerprint").takeIf { it.isNotBlank() && it != "null" },
                 schemaVersion = json.optInt("schemaVersion", 0),
+                completionEvidenceDigest = json.optString("completionEvidenceDigest").takeIf { it.isNotBlank() && it != "null" },
                 checkpointDigest = json.optString("checkpointDigest").takeIf { it.isNotBlank() && it != "null" }
             )
 
@@ -117,5 +127,6 @@ data class PersistedTaskSession(
     val savedAtMs: Long,
     val planFingerprint: String? = null,
     val schemaVersion: Int = PERSISTED_SESSION_SCHEMA_VERSION,
+    val completionEvidenceDigest: String? = null,
     val checkpointDigest: String? = null
 )
