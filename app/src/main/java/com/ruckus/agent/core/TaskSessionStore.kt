@@ -37,7 +37,14 @@ class TaskSessionStore(context: Context) {
             put("savedAt", session.savedAtMs)
             put("checkpointDigest", session.checkpointDigest)
         }
-        prefs.edit().putString(KEY, json.toString()).apply()
+
+        // Checkpoints are part of the executor's safety boundary: EXECUTING is written
+        // immediately before controller dispatch and verified progress is written before
+        // the next step starts. commit() keeps that ordering durable across sudden process
+        // death instead of allowing an asynchronous apply() write to lag behind execution.
+        check(prefs.edit().putString(KEY, json.toString()).commit()) {
+            "Unable to durably persist task checkpoint"
+        }
     }
 
     fun load(): PersistedTaskSession? {
@@ -88,7 +95,13 @@ class TaskSessionStore(context: Context) {
         }.getOrNull()
     }
 
-    fun clear() = prefs.edit().remove(KEY).apply()
+    fun clear() {
+        // Clearing is also synchronous so a subsequent launch cannot resurrect a task
+        // whose checkpoint deletion was still buffered when the process disappeared.
+        check(prefs.edit().remove(KEY).commit()) {
+            "Unable to durably clear task checkpoint"
+        }
+    }
 
     companion object { private const val KEY = "active_task" }
 }
