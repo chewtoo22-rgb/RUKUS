@@ -61,6 +61,26 @@ class ActionVerifierSemanticEffectTest {
     }
 
     @Test
+    fun exact_package_launch_requires_exact_foreground_identity() {
+        val action = AgentAction.OpenApp("com.example.app")
+        val verified = ActionVerifier.verify(
+            action,
+            before,
+            "pkg=com.example.app | node[text=Home;clickable=true;enabled=true]",
+            "Opened com.example.app",
+        )
+        val prefixSpoof = ActionVerifier.verify(
+            action,
+            before,
+            "pkg=com.example.app.evil | node[text=Home;clickable=true;enabled=true]",
+            "Opened com.example.app",
+        )
+
+        assertTrue(verified.ok)
+        assertFalse(prefixSpoof.ok)
+    }
+
+    @Test
     fun named_app_launch_requires_resolved_package_to_be_foreground() {
         val action = AgentAction.OpenAppByName("Spotify")
         val verified = ActionVerifier.verify(
@@ -78,6 +98,19 @@ class ActionVerifierSemanticEffectTest {
 
         assertTrue(verified.ok)
         assertFalse(wrongForeground.ok)
+    }
+
+    @Test
+    fun named_app_launch_rejects_package_prefix_spoof() {
+        val action = AgentAction.OpenAppByName("Spotify")
+        val result = ActionVerifier.verify(
+            action,
+            before,
+            "pkg=com.spotify.music.clone | node[text=Home;clickable=true;enabled=true]",
+            "Opened Spotify package=com.spotify.music",
+        )
+
+        assertFalse(result.ok)
     }
 
     @Test
