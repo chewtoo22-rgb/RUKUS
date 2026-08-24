@@ -24,6 +24,7 @@ object PersistedSessionDigest {
             field("status", session.status.name)
             field("savedAtMs", session.savedAtMs.toString())
             nullableField("planFingerprint", session.planFingerprint)
+            nullableField("completionEvidenceDigest", session.completionEvidenceDigest)
         }
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(canonical.toByteArray(StandardCharsets.UTF_8))
