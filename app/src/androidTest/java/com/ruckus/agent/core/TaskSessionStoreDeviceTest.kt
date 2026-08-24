@@ -97,6 +97,61 @@ class TaskSessionStoreDeviceTest {
     }
 
     @Test
+    fun stalePrivilegedConfirmationSurvivesOnlyAsFreshPreflightWork() {
+        val request = "run approved diagnostics"
+        val action = AgentAction.RunApprovedShell(commandId = "diagnostics", args = mapOf("scope" to "device"))
+        val screenSummary = "pkg=com.ruckus.agent | screen=confirmation"
+        val planFingerprint = "device-test-confirmation-plan"
+        val staleSavedAt = System.currentTimeMillis() - ConfirmationLeasePolicy.MAX_AGE_MS - 5_000L
+
+        // Model a process restart after the short privileged-action confirmation lease
+        // expired while remaining well inside the broader task-resume lease.
+        val unsigned = PersistedTaskSession(
+            request = request,
+            currentStep = 0,
+            totalSteps = 1,
+            lastAction = action.toString(),
+            lastScreenSummary = screenSummary,
+            recoveryAttempts = 0,
+            status = AgentTaskState.Status.WAITING_CONFIRMATION,
+            savedAtMs = staleSavedAt,
+            planFingerprint = planFingerprint,
+            schemaVersion = PERSISTED_SESSION_SCHEMA_VERSION,
+            checkpointDigest = null
+        )
+        val stale = unsigned.copy(checkpointDigest = PersistedSessionDigest.compute(unsigned))
+        val json = JSONObject().apply {
+            put("schemaVersion", stale.schemaVersion)
+            put("request", stale.request)
+            put("currentStep", stale.currentStep)
+            put("totalSteps", stale.totalSteps)
+            put("lastAction", stale.lastAction)
+            put("lastScreenSummary", stale.lastScreenSummary)
+            put("recoveryAttempts", stale.recoveryAttempts)
+            put("status", stale.status.name)
+            put("planFingerprint", stale.planFingerprint)
+            put("savedAt", stale.savedAtMs)
+            put("checkpointDigest", stale.checkpointDigest)
+        }
+        val prefs = context.getSharedPreferences("ruckus_task_session", Context.MODE_PRIVATE)
+        assertTrue(prefs.edit().putString("active_task", json.toString()).commit())
+
+        val reloaded = TaskSessionStore(context).load()
+        assertNotNull(reloaded)
+        reloaded!!
+
+        // The task remains recoverable, but the stale approval state must not survive.
+        // RUNNING forces resume through whole-plan preflight and a new exact-action
+        // confirmation before any privileged controller dispatch can occur.
+        assertEquals(AgentTaskState.Status.RUNNING, reloaded.status)
+        assertEquals(request, reloaded.request)
+        assertEquals(action.toString(), reloaded.lastAction)
+        assertEquals(screenSummary, reloaded.lastScreenSummary)
+        assertEquals(planFingerprint, reloaded.planFingerprint)
+        assertTrue(PersistedSessionDigest.matches(stale))
+    }
+
+    @Test
     fun tamperedDurableCheckpointFailsClosed() {
         val state = AgentTaskState(
             request = "home",
