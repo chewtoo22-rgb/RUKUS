@@ -3,6 +3,7 @@ package com.ruckus.agent.core
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -21,11 +22,12 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class TaskSessionStoreDeviceTest {
+    private lateinit var context: Context
     private lateinit var store: TaskSessionStore
 
     @Before
     fun setUp() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
+        context = ApplicationProvider.getApplicationContext()
         store = TaskSessionStore(context)
         store.clear()
     }
@@ -62,6 +64,37 @@ class TaskSessionStoreDeviceTest {
         assertEquals(PERSISTED_SESSION_SCHEMA_VERSION, loaded.schemaVersion)
         assertTrue(!loaded.checkpointDigest.isNullOrBlank())
         assertTrue(PersistedSessionDigest.matches(loaded))
+    }
+
+    @Test
+    fun tamperedDurableCheckpointFailsClosed() {
+        val state = AgentTaskState(
+            request = "home",
+            currentStep = 0,
+            totalSteps = 2,
+            lastAction = AgentAction.Home,
+            lastScreenSummary = "pkg=com.example.before | screen=Home",
+            recoveryAttempts = 0,
+            status = AgentTaskState.Status.EXECUTING
+        )
+
+        store.save(state, planFingerprint = "device-test-plan-fingerprint")
+
+        val prefs = context.getSharedPreferences("ruckus_task_session", Context.MODE_PRIVATE)
+        val raw = prefs.getString("active_task", null)
+        assertNotNull(raw)
+
+        val tampered = JSONObject(raw!!).apply {
+            // Simulate storage/process corruption or local checkpoint manipulation while
+            // deliberately leaving the original digest in place.
+            put("currentStep", 1)
+            put("lastAction", AgentAction.Back.toString())
+        }
+        assertTrue(prefs.edit().putString("active_task", tampered.toString()).commit())
+
+        // Durable storage is evidence, not execution authority. A checkpoint whose
+        // contents no longer match its integrity digest must never be resumed.
+        assertNull(store.load())
     }
 
     @Test
