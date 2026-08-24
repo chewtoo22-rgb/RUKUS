@@ -79,6 +79,15 @@ class MainActivity:ComponentActivity(){
      style=MaterialTheme.typography.bodySmall
     )
    }
+   if(saved.status==AgentTaskState.Status.COMPLETE || saved.status==AgentTaskState.Status.FAILED){
+    val proofStatus=if(saved.status==AgentTaskState.Status.COMPLETE)"VERIFIED COMPLETE" else "FAILED / NOT PROVEN"
+    val action=saved.lastAction?.toString()?.take(180) ?: "none"
+    val observation=saved.lastScreenSummary?.takeIf{it.isNotBlank()}?.take(500) ?: "no final screen observation"
+    StatusCard(
+     "TASK EVIDENCE",
+     "$proofStatus\nGoal: ${saved.request.take(240)}\nProgress: ${saved.currentStep}/${saved.totalSteps} • recoveries ${saved.recoveryAttempts}\nLast action: $action\nFinal observation: $observation"
+    )
+   }
   }
 
   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
