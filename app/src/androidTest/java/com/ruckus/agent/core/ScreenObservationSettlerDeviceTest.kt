@@ -1,14 +1,23 @@
 package com.ruckus.agent.core
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
 
-class ScreenObservationSettlerTest {
+/**
+ * Android-runtime probe for settle/inspect determinism.
+ *
+ * CI compiles this into the instrumentation APK. Execution remains a Thursday
+ * device/emulator test so no physical-runtime result is implied by compilation.
+ */
+@RunWith(AndroidJUnit4::class)
+class ScreenObservationSettlerDeviceTest {
 
     @Test
-    fun transientChangeThenBaselineDoesNotSettleAsPostActionUi() {
+    fun transientFrameCannotAuthorizeSettlingBackOnPreActionUi() {
         val samples = ArrayDeque(listOf(
             "pkg=com.example.next | screen=Transient",
             "pkg=com.example.old | screen=Before",
@@ -29,7 +38,7 @@ class ScreenObservationSettlerTest {
     }
 
     @Test
-    fun stableChangedUiSettlesAfterTwoMatchingPostChangeSamples() {
+    fun twoStablePostChangeSnapshotsAreAccepted() {
         val samples = ArrayDeque(listOf(
             "pkg=com.example.old | screen=Before",
             "pkg=com.example.next | screen=After",

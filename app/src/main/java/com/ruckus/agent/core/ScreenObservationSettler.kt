@@ -43,9 +43,9 @@ object ScreenObservationSettler {
                 consecutiveStable = if(current == previous) consecutiveStable + 1 else 1
                 previous = current
 
-                // When we have a baseline, do not settle on stale pre-action UI. Wait for either
-                // a visible change or exhaustion of the bounded sampling window.
-                val eligibleToSettle = before == null || changed
+                // With a baseline, only settle on a stable snapshot that is itself post-change.
+                // A transient frame must not make a later return to the pre-action UI eligible.
+                val eligibleToSettle = before == null || current != before
                 if(eligibleToSettle && consecutiveStable >= requiredStableSamples) {
                     return ScreenObservationResult(current,sampleNumber,true,changed)
                 }
