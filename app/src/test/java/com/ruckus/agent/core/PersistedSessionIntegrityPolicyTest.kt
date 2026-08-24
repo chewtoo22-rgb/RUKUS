@@ -15,7 +15,7 @@ class PersistedSessionIntegrityPolicyTest {
         schemaVersion:Int=PERSISTED_SESSION_SCHEMA_VERSION,
         sign:Boolean=true
     ): PersistedTaskSession {
-        val unsigned = PersistedTaskSession(
+        val base = PersistedTaskSession(
             request=request,
             currentStep=currentStep,
             totalSteps=totalSteps,
@@ -26,8 +26,14 @@ class PersistedSessionIntegrityPolicyTest {
             savedAtMs=1_000_000L,
             planFingerprint=planFingerprint,
             schemaVersion=schemaVersion,
+            completionEvidenceDigest=null,
             checkpointDigest=null
         )
+        val unsigned = if (status == AgentTaskState.Status.COMPLETE) {
+            base.copy(completionEvidenceDigest = TaskCompletionEvidence.compute(base))
+        } else {
+            base
+        }
         return if (sign) {
             unsigned.copy(checkpointDigest=PersistedSessionDigest.compute(unsigned))
         } else {
@@ -127,6 +133,32 @@ class PersistedSessionIntegrityPolicyTest {
             session(currentStep=1,totalSteps=1,status=AgentTaskState.Status.COMPLETE)
         )
         assertTrue(decision.allowed)
+    }
+
+    @Test fun completeCheckpointWithoutEvidenceFailsClosedEvenWhenCheckpointIsResigned() {
+        val completed=session(currentStep=1,totalSteps=1,status=AgentTaskState.Status.COMPLETE)
+        val withoutEvidence=completed.copy(completionEvidenceDigest=null,checkpointDigest=null)
+        val resigned=withoutEvidence.copy(checkpointDigest=PersistedSessionDigest.compute(withoutEvidence))
+        val decision=PersistedSessionIntegrityPolicy.evaluate(resigned)
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("completion evidence"))
+    }
+
+    @Test fun completionEvidenceMutationFailsClosedEvenWhenCheckpointIsResigned() {
+        val completed=session(currentStep=1,totalSteps=1,status=AgentTaskState.Status.COMPLETE)
+        val mutated=completed.copy(lastScreenSummary="pkg=other\ntext=Unexpected",checkpointDigest=null)
+        val resigned=mutated.copy(checkpointDigest=PersistedSessionDigest.compute(mutated))
+        val decision=PersistedSessionIntegrityPolicy.evaluate(resigned)
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("completion evidence"))
+    }
+
+    @Test fun nonCompleteCheckpointCannotCarryStaleCompletionEvidence() {
+        val pending=session().copy(completionEvidenceDigest="deadbeef",checkpointDigest=null)
+        val resigned=pending.copy(checkpointDigest=PersistedSessionDigest.compute(pending))
+        val decision=PersistedSessionIntegrityPolicy.evaluate(resigned)
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("stale completion evidence"))
     }
 
     @Test fun failedZeroActionCheckpointRemainsValidForDiagnostics() {
