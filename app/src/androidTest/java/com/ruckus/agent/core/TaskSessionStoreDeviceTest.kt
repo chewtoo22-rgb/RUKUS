@@ -75,7 +75,7 @@ class TaskSessionStoreDeviceTest {
             lastAction = AgentAction.Home,
             lastScreenSummary = "pkg=com.android.launcher | screen=Home | verified=true",
             recoveryAttempts = 1,
-            status = AgentTaskState.Status.COMPLETED
+            status = AgentTaskState.Status.COMPLETE
         )
 
         store.save(state, planFingerprint = "device-test-completed-plan")
@@ -85,7 +85,7 @@ class TaskSessionStoreDeviceTest {
         val reloaded = TaskSessionStore(context).load()
         assertNotNull(reloaded)
         reloaded!!
-        assertEquals(AgentTaskState.Status.COMPLETED, reloaded.status)
+        assertEquals(AgentTaskState.Status.COMPLETE, reloaded.status)
         assertEquals(state.request, reloaded.request)
         assertEquals(state.totalSteps, reloaded.currentStep)
         assertEquals(state.totalSteps, reloaded.totalSteps)
