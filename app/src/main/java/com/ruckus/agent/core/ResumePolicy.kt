@@ -32,6 +32,17 @@ object ResumePolicy {
         val step = session.currentStep.coerceIn(0, plan.actions.size)
         if (step >= plan.actions.size) return ResumeDecision(false, reason = "All planned steps are already checkpointed")
 
+        if (session.status == AgentTaskState.Status.EXECUTING) {
+            val expectedInFlight = plan.actions.getOrNull(step)
+                ?: return ResumeDecision(false, reason = "In-flight checkpoint no longer maps to the saved plan")
+            if (session.lastAction != expectedInFlight.toString()) {
+                return ResumeDecision(
+                    false,
+                    reason = "In-flight checkpoint action differs from the exact saved plan; ambiguous recovery actions require a fresh user request"
+                )
+            }
+        }
+
         return when (session.status) {
             AgentTaskState.Status.WAITING_CONFIRMATION -> ResumeDecision(true, step, "Resume at confirmation-gated step with exact saved plan")
             AgentTaskState.Status.EXECUTING -> ResumeDecision(true, step, "Reconcile ambiguous in-flight action before any replay")
