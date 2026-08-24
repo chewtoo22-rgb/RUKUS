@@ -6,12 +6,14 @@ object ActionVerifier {
     fun verify(action:AgentAction,before:String?,after:String?,result:String?):VerificationResult {
         return when(action) {
             is AgentAction.OpenApp -> {
-                if(after?.contains("pkg=${action.packageName}",ignoreCase=true)==true) VerificationResult(true,"Target package is foreground")
+                val observedPkg = foregroundPackage(after)
+                if(observedPkg.equals(action.packageName, ignoreCase = true)) VerificationResult(true,"Target package is foreground")
                 else VerificationResult(false,"Target package not observed after launch")
             }
             is AgentAction.OpenAppByName -> {
-                val launchedPkg=result?.substringAfter("package=","")?.trim().orEmpty()
-                if(launchedPkg.isNotEmpty() && after?.contains("pkg=$launchedPkg",ignoreCase=true)==true) {
+                val launchedPkg = resultPackage(result)
+                val observedPkg = foregroundPackage(after)
+                if(launchedPkg.isNotEmpty() && observedPkg.equals(launchedPkg, ignoreCase = true)) {
                     VerificationResult(true,"Resolved app package is foreground")
                 } else if(launchedPkg.isEmpty()) {
                     VerificationResult(false,"App launch result did not identify the resolved package")
@@ -52,6 +54,29 @@ object ActionVerifier {
             AgentAction.InspectScreen -> VerificationResult(after?.startsWith("pkg=")==true,"Package-aware screen inspection completed")
             is AgentAction.RunApprovedShell -> VerificationResult(result != null,result ?: "Privileged action not acknowledged")
         }
+    }
+
+    private fun foregroundPackage(observation:String?):String? {
+        if(observation == null) return null
+        val marker = "pkg="
+        val start = observation.indexOf(marker)
+        if(start < 0) return null
+        val valueStart = start + marker.length
+        return observation.substring(valueStart)
+            .takeWhile { !it.isWhitespace() && it != '|' }
+            .trim()
+            .takeIf { it.isNotEmpty() }
+    }
+
+    private fun resultPackage(result:String?):String {
+        if(result == null) return ""
+        val marker = "package="
+        val start = result.indexOf(marker)
+        if(start < 0) return ""
+        val valueStart = start + marker.length
+        return result.substring(valueStart)
+            .takeWhile { !it.isWhitespace() && it != '|' }
+            .trim()
     }
 
     private fun verifyBrightness(action:AgentAction.SetBrightness, after:String?):VerificationResult {
