@@ -57,6 +57,11 @@ object ScreenObservationSettler {
             if(sampleNumber < maxSamples) pause(SAMPLE_DELAY_MS)
         }
 
-        return ScreenObservationResult(latest ?: before,maxSamples,false,changed)
+        // Do not promote an unstable/transient post-action snapshot into verification evidence.
+        // When a pre-action baseline exists, returning that baseline makes downstream verification
+        // fail closed unless a stable changed state was actually observed. With no baseline there is
+        // nothing safer to fall back to, so preserve the latest observation for inspection only.
+        val verificationScreen = before ?: latest
+        return ScreenObservationResult(verificationScreen,maxSamples,false,changed)
     }
 }
