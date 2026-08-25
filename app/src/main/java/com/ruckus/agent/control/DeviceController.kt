@@ -52,19 +52,13 @@ class DeviceController(private val context: Context) {
     private fun inspectScreen(): String {
         val service=checkNotNull(RuckusAccessibilityService.instance) { "Accessibility service offline" }
         val pkg=service.activePackage() ?: "unknown"
-        val nodes=service.snapshot().asSequence()
-            .filter { node ->
-                !node.text.isNullOrBlank() || !node.contentDescription.isNullOrBlank() || node.editable || node.focused || node.scrollable
-            }
+        val nodes=ObservedUiNodePolicy.select(service.snapshot())
             .map { node ->
                 val label = node.text?.trim()?.takeIf { it.isNotBlank() }
                     ?: node.contentDescription?.trim()?.takeIf { it.isNotBlank() }
                     ?: ""
                 "node[text=${escapeObservation(label)};clickable=${node.clickable};enabled=${node.enabled};editable=${node.editable};sensitive=${node.sensitive};focused=${node.focused};scrollable=${node.scrollable}]"
             }
-            .distinct()
-            .take(16)
-            .toList()
         val launcherQuery = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val launchCandidates = context.packageManager.queryIntentActivities(launcherQuery, 0).mapNotNull { info ->
             val packageName = info.activityInfo?.packageName?.trim().orEmpty()
