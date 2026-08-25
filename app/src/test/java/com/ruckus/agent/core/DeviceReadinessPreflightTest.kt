@@ -32,6 +32,45 @@ class DeviceReadinessPreflightTest {
         assertTrue(decision.reason.contains("WRITE_SETTINGS"))
     }
 
+    @Test fun unavailableShellAdapterBlocksEarlierSideEffects() {
+        val shell = AgentAction.RunApprovedShell("wifi-status")
+        val actions = listOf(AgentAction.SetMediaVolume(20), shell)
+        val decision = DeviceReadinessPreflight.evaluate(
+            actions = actions,
+            startStep = 0,
+            accessibilityReady = true,
+            writeSettingsReady = true,
+            approvedShellReady = false
+        )
+        assertFalse(decision.allowed)
+        assertEquals(1, decision.actionIndex)
+        assertEquals(shell, decision.action)
+        assertTrue(decision.reason.contains("shell", ignoreCase = true))
+    }
+
+    @Test fun completedShellStepDoesNotPoisonResumedRemainder() {
+        val actions = listOf(AgentAction.RunApprovedShell("wifi-status"), AgentAction.Home)
+        val decision = DeviceReadinessPreflight.evaluate(
+            actions = actions,
+            startStep = 1,
+            accessibilityReady = true,
+            writeSettingsReady = true,
+            approvedShellReady = false
+        )
+        assertTrue(decision.allowed)
+    }
+
+    @Test fun shellStepIsAdmittedOnlyWhenAdapterIsReady() {
+        val decision = DeviceReadinessPreflight.evaluate(
+            actions = listOf(AgentAction.RunApprovedShell("wifi-status")),
+            startStep = 0,
+            accessibilityReady = true,
+            writeSettingsReady = true,
+            approvedShellReady = true
+        )
+        assertTrue(decision.allowed)
+    }
+
     @Test fun completedBrightnessDoesNotPoisonResumedRemainder() {
         val actions = listOf(AgentAction.SetBrightness(40), AgentAction.Home)
         val decision = DeviceReadinessPreflight.evaluate(
