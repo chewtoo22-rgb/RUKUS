@@ -19,7 +19,13 @@ object CommandPlanner {
 
         if (actions.isNotEmpty()) {
             val admission = PlanAdmissionPolicy.evaluate(actions)
-            if (!admission.allowed) rejected += "plan rejected: ${admission.reason}"
+            if (!admission.allowed) {
+                rejected += "plan rejected: ${admission.reason}"
+                // A structurally rejected plan is evidence only, never an executable partial.
+                // Keep the rejection details for UX/diagnostics while exposing zero typed actions
+                // to downstream callers that may not independently re-run admission.
+                return Plan(emptyList(), rejected)
+            }
         }
 
         return Plan(actions, rejected)
