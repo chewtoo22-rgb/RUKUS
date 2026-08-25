@@ -25,6 +25,16 @@ object ReasoningDispatchCoordinator {
         currentObservation: String?,
         nowEpochMs: Long = System.currentTimeMillis(),
     ): Result {
+        // Re-apply the raw-goal admission policy at the final handoff. Observed proposals have
+        // their own tighter goal bound, but they predate GoalAdmissionPolicy and may still be
+        // constructed from input containing unsupported control characters. The execution
+        // boundary must never expose controller actions for a goal the normal executor would
+        // reject before parsing/persistence.
+        val goalAdmission = GoalAdmissionPolicy.evaluate(proposal.goal)
+        if (!goalAdmission.allowed || goalAdmission.normalizedGoal != proposal.goal) {
+            return Result(error = goalAdmission.reason.ifBlank { "Reasoning goal failed execution admission" })
+        }
+
         val execution = ReasoningPlanGateway.authorizeForExecution(
             proposal = proposal,
             currentObservation = currentObservation,
