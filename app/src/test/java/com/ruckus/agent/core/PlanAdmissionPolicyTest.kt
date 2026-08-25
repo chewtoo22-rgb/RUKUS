@@ -43,7 +43,7 @@ class PlanAdmissionPolicyTest {
     @Test fun commandPlannerRefusesOverlongRequestAtomically() {
         val request=(1..(PlanAdmissionPolicy.MAX_ACTIONS + 1)).joinToString(" then ") { "home" }
         val plan=CommandPlanner.plan(request)
-        assertEquals(PlanAdmissionPolicy.MAX_ACTIONS + 1,plan.actions.size)
+        assertTrue(plan.actions.isEmpty())
         assertTrue(plan.rejectedParts.any { it.contains("plan rejected") })
     }
 
