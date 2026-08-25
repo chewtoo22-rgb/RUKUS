@@ -6,6 +6,7 @@ import android.content.Intent
 import android.media.AudioManager
 import android.provider.Settings
 import com.ruckus.agent.core.AgentAction
+import com.ruckus.agent.core.AppLaunchMatchPolicy
 
 class DeviceController(private val context: Context) {
     fun execute(action: AgentAction): Result<String> = runCatching {
@@ -17,18 +18,21 @@ class DeviceController(private val context: Context) {
                 context.startActivity(intent); "Opened package=${action.packageName}"
             }
             is AgentAction.OpenAppByName -> {
+                val packageManager = context.packageManager
                 val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-                val match = context.packageManager.queryIntentActivities(query, 0)
-                    .map { it to it.loadLabel(context.packageManager).toString() }
-                    .firstOrNull { (_, label) -> label.equals(action.appName, true) }
-                    ?: context.packageManager.queryIntentActivities(query,0)
-                        .map { it to it.loadLabel(context.packageManager).toString() }
-                        .firstOrNull { (_, label) -> label.contains(action.appName, true) }
-                    ?: error("App not found: ${action.appName}")
-                val pkg=match.first.activityInfo.packageName
-                val launch = context.packageManager.getLaunchIntentForPackage(pkg)
-                    ?: error("App is not launchable: ${match.second}")
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(launch); "Opened ${match.second} package=$pkg"
+                val candidates = packageManager.queryIntentActivities(query, 0).mapNotNull { info ->
+                    val packageName = info.activityInfo?.packageName?.trim().orEmpty()
+                    val label = runCatching { info.loadLabel(packageManager).toString().trim() }.getOrDefault("")
+                    if (packageName.isBlank() || label.isBlank()) null
+                    else AppLaunchMatchPolicy.Candidate(packageName, label)
+                }.filter { candidate -> packageManager.getLaunchIntentForPackage(candidate.packageName) != null }
+                val match = AppLaunchMatchPolicy.resolve(action.appName, candidates)
+                    ?: error("App name is unavailable or ambiguous: ${action.appName}")
+                val launch = packageManager.getLaunchIntentForPackage(match.packageName)
+                    ?: error("App is no longer launchable: ${match.label}")
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(launch)
+                "Opened ${match.label} package=${match.packageName}"
             }
             AgentAction.Back -> { checkNotNull(RuckusAccessibilityService.instance).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK); "Back" }
             AgentAction.Home -> { checkNotNull(RuckusAccessibilityService.instance).performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME); "Home" }
