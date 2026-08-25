@@ -31,4 +31,31 @@ class DeviceReadinessPreflightDeviceTest {
         assertEquals(1, decision.actionIndex)
         assertEquals(AgentAction.SetBrightness(60), decision.action)
     }
+
+    @Test fun unavailableShellAdapterBlocksWholeRemainingPlan() {
+        val shell = AgentAction.RunApprovedShell("wifi-status")
+        val actions = listOf(AgentAction.Home, shell)
+        val decision = DeviceReadinessPreflight.evaluate(
+            actions = actions,
+            startStep = 0,
+            accessibilityReady = true,
+            writeSettingsReady = true,
+            approvedShellReady = false
+        )
+        assertFalse(decision.allowed)
+        assertEquals(1, decision.actionIndex)
+        assertEquals(shell, decision.action)
+    }
+
+    @Test fun resumedSuffixIgnoresAlreadyCompletedShellCapability() {
+        val actions = listOf(AgentAction.RunApprovedShell("wifi-status"), AgentAction.Home)
+        val decision = DeviceReadinessPreflight.evaluate(
+            actions = actions,
+            startStep = 1,
+            accessibilityReady = true,
+            writeSettingsReady = true,
+            approvedShellReady = false
+        )
+        assertTrue(decision.allowed)
+    }
 }
