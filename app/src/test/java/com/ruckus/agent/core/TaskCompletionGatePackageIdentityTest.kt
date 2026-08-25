@@ -88,10 +88,10 @@ class TaskCompletionGatePackageIdentityTest {
         val actions = listOf<AgentAction>(
             AgentAction.Home,
             AgentAction.Back,
-            AgentAction.Tap(100, 200),
+            AgentAction.Tap(100f, 200f),
             AgentAction.TapLabel("Continue"),
-            AgentAction.Swipe(100, 600, 100, 200, 250),
-            AgentAction.Scroll(AgentAction.ScrollDirection.DOWN),
+            AgentAction.Swipe(100f, 600f, 100f, 200f, 250),
+            AgentAction.Scroll(AgentAction.Direction.DOWN),
             AgentAction.InspectScreen
         )
 
