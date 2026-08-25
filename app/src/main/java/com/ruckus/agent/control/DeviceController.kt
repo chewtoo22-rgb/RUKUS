@@ -6,7 +6,7 @@ import android.content.Intent
 import android.media.AudioManager
 import android.provider.Settings
 import com.ruckus.agent.core.AgentAction
-import com.ruckus.agent.core.AppLaunchMatchPolicy
+import com.ruckus.agent.core.InstalledAppLaunchResolver
 
 class DeviceController(private val context: Context) {
     fun execute(action: AgentAction): Result<String> = runCatching {
@@ -18,17 +18,9 @@ class DeviceController(private val context: Context) {
                 context.startActivity(intent); "Opened package=${action.packageName}"
             }
             is AgentAction.OpenAppByName -> {
-                val packageManager = context.packageManager
-                val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-                val candidates = packageManager.queryIntentActivities(query, 0).mapNotNull { info ->
-                    val packageName = info.activityInfo?.packageName?.trim().orEmpty()
-                    val label = runCatching { info.loadLabel(packageManager).toString().trim() }.getOrDefault("")
-                    if (packageName.isBlank() || label.isBlank()) null
-                    else AppLaunchMatchPolicy.Candidate(packageName, label)
-                }.filter { candidate -> packageManager.getLaunchIntentForPackage(candidate.packageName) != null }
-                val match = AppLaunchMatchPolicy.resolve(action.appName, candidates)
+                val match = InstalledAppLaunchResolver.resolve(context, action.appName)
                     ?: error("App name is unavailable or ambiguous: ${action.appName}")
-                val launch = packageManager.getLaunchIntentForPackage(match.packageName)
+                val launch = context.packageManager.getLaunchIntentForPackage(match.packageName)
                     ?: error("App is no longer launchable: ${match.label}")
                 launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(launch)
