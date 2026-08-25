@@ -57,18 +57,15 @@ class DeviceReadyExecutor(context: Context) {
         is AgentAction.OpenApp -> appContext.packageManager
             .getLaunchIntentForPackage(action.packageName) != null
         is AgentAction.OpenAppByName -> {
+            val packageManager = appContext.packageManager
             val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-            val candidates = appContext.packageManager.queryIntentActivities(query, 0)
-            val exact = candidates.any { info ->
-                val label = runCatching { info.loadLabel(appContext.packageManager).toString() }.getOrDefault("")
-                label.equals(action.appName, ignoreCase = true) &&
-                    appContext.packageManager.getLaunchIntentForPackage(info.activityInfo.packageName) != null
-            }
-            exact || candidates.any { info ->
-                val label = runCatching { info.loadLabel(appContext.packageManager).toString() }.getOrDefault("")
-                label.contains(action.appName, ignoreCase = true) &&
-                    appContext.packageManager.getLaunchIntentForPackage(info.activityInfo.packageName) != null
-            }
+            val candidates = packageManager.queryIntentActivities(query, 0).mapNotNull { info ->
+                val packageName = info.activityInfo?.packageName?.trim().orEmpty()
+                val label = runCatching { info.loadLabel(packageManager).toString().trim() }.getOrDefault("")
+                if (packageName.isBlank() || label.isBlank()) null
+                else AppLaunchMatchPolicy.Candidate(packageName, label)
+            }.filter { candidate -> packageManager.getLaunchIntentForPackage(candidate.packageName) != null }
+            AppLaunchMatchPolicy.resolve(action.appName, candidates) != null
         }
         else -> true
     }
