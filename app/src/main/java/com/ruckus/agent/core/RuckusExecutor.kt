@@ -53,7 +53,7 @@ class RuckusExecutor(context:Context){
             return executePlan(session.request,plan,index+1,approved,true)
         }
 
-        val replay=CrashRecoveryPolicy.decide(action)
+        val replay=CrashReplayAdmissionPolicy.decide(action,session.recoveryAttempts)
         if(!replay.replayAllowed) {
             val msg="In-flight action outcome is ambiguous after restart; ${replay.reason}"
             ActionAudit.record(session.request,action,"CRASH_AMBIGUOUS_BLOCKED: $msg")
@@ -62,7 +62,7 @@ class RuckusExecutor(context:Context){
         }
 
         ActionAudit.record(session.request,action,"CRASH_REPLAY_ALLOWED: ${replay.reason}")
-        setState(AgentTaskState(session.request,index,plan.actions.size,action,current,session.recoveryAttempts,AgentTaskState.Status.RUNNING))
+        setState(AgentTaskState(session.request,index,plan.actions.size,action,current,replay.nextRecoveryAttempts,AgentTaskState.Status.RUNNING))
         return executePlan(session.request,plan,index,approved,true)
     }
 
