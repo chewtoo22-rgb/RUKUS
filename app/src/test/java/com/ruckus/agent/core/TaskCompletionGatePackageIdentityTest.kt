@@ -83,4 +83,22 @@ class TaskCompletionGatePackageIdentityTest {
         )
         assertFalse(decision.ok)
     }
+
+    @Test fun terminalUiActionsRequirePackageAwareFinalCheckpoint() {
+        val actions = listOf<AgentAction>(
+            AgentAction.Home,
+            AgentAction.Back,
+            AgentAction.Tap(100, 200),
+            AgentAction.TapLabel("Continue"),
+            AgentAction.Swipe(100, 600, 100, 200, 250),
+            AgentAction.Scroll(AgentAction.ScrollDirection.DOWN),
+            AgentAction.InspectScreen
+        )
+
+        actions.forEach { action ->
+            assertFalse(TaskCompletionGate.evaluate(plan(action), 1, "visible text but no package identity").ok)
+            assertFalse(TaskCompletionGate.evaluate(plan(action), 1, "pkg=").ok)
+            assertTrue(TaskCompletionGate.evaluate(plan(action), 1, "pkg=com.example.app | text=Ready").ok)
+        }
+    }
 }
