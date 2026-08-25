@@ -5,7 +5,12 @@ object CommandPlanner {
     data class Plan(val actions: List<AgentAction>, val rejectedParts: List<String>)
 
     fun plan(raw: String): Plan {
-        val parts = raw
+        val goal = GoalAdmissionPolicy.evaluate(raw)
+        if (!goal.allowed) {
+            return Plan(emptyList(), listOf("goal rejected: ${goal.reason}"))
+        }
+
+        val parts = goal.normalizedGoal
             .split(Regex("\\s+(?:and then|then|and)\\s+", RegexOption.IGNORE_CASE))
             .map { it.trim() }
             .filter { it.isNotEmpty() }
