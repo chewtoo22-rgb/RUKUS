@@ -54,9 +54,7 @@ class DeviceController(private val context: Context) {
         val pkg=service.activePackage() ?: "unknown"
         val nodes=ObservedUiNodePolicy.select(service.snapshot())
             .map { node ->
-                val label = node.text?.trim()?.takeIf { it.isNotBlank() }
-                    ?: node.contentDescription?.trim()?.takeIf { it.isNotBlank() }
-                    ?: ""
+                val label = ObservationRedactionPolicy.label(node)
                 "node[text=${escapeObservation(label)};clickable=${node.clickable};enabled=${node.enabled};editable=${node.editable};sensitive=${node.sensitive};focused=${node.focused};scrollable=${node.scrollable}]"
             }
         val launcherQuery = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
