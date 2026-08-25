@@ -27,6 +27,34 @@ class CommandPlannerAdmissionTest {
     }
 
     @Test
+    fun oversizedGoalExposesNoExecutableActionsBeforeParsing() {
+        val request = "home " + "x".repeat(GoalAdmissionPolicy.MAX_GOAL_CHARS)
+
+        val plan = CommandPlanner.plan(request)
+
+        assertTrue(plan.actions.isEmpty())
+        assertEquals(1, plan.rejectedParts.size)
+        assertTrue(plan.rejectedParts.single().contains("character limit", ignoreCase = true))
+    }
+
+    @Test
+    fun controlCharacterGoalFailsClosed() {
+        val plan = CommandPlanner.plan("home\u0000then back")
+
+        assertTrue(plan.actions.isEmpty())
+        assertEquals(1, plan.rejectedParts.size)
+        assertTrue(plan.rejectedParts.single().contains("control characters", ignoreCase = true))
+    }
+
+    @Test
+    fun surroundingWhitespaceIsNormalizedBeforePlanning() {
+        val plan = CommandPlanner.plan("  home then back  ")
+
+        assertEquals(listOf(AgentAction.Home, AgentAction.Back), plan.actions)
+        assertTrue(plan.rejectedParts.isEmpty())
+    }
+
+    @Test
     fun unknownSegmentStillReturnsKnownActionsButMarksPlanIncomplete() {
         val plan = CommandPlanner.plan("home then make coffee")
 
