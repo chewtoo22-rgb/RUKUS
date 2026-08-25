@@ -6,7 +6,9 @@ import android.content.Intent
 import android.media.AudioManager
 import android.provider.Settings
 import com.ruckus.agent.core.AgentAction
+import com.ruckus.agent.core.AppLaunchMatchPolicy
 import com.ruckus.agent.core.InstalledAppLaunchResolver
+import com.ruckus.agent.core.ObservedLaunchInventoryPolicy
 
 class DeviceController(private val context: Context) {
     fun execute(action: AgentAction): Result<String> = runCatching {
@@ -64,17 +66,16 @@ class DeviceController(private val context: Context) {
             .take(16)
             .toList()
         val launcherQuery = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val apps = context.packageManager.queryIntentActivities(launcherQuery, 0).asSequence()
-            .mapNotNull { info ->
-                val packageName = info.activityInfo?.packageName?.trim().orEmpty()
-                val label = runCatching { info.loadLabel(context.packageManager).toString().trim() }.getOrDefault("")
-                if (packageName.isBlank() || label.isBlank()) null
-                else "app[package=${escapeObservation(packageName)};label=${escapeObservation(label)}]"
+        val launchCandidates = context.packageManager.queryIntentActivities(launcherQuery, 0).mapNotNull { info ->
+            val packageName = info.activityInfo?.packageName?.trim().orEmpty()
+            val label = runCatching { info.loadLabel(context.packageManager).toString().trim() }.getOrDefault("")
+            if (packageName.isBlank() || label.isBlank()) null
+            else AppLaunchMatchPolicy.Candidate(packageName, label)
+        }
+        val apps = ObservedLaunchInventoryPolicy.select(launchCandidates, pkg)
+            .map { candidate ->
+                "app[package=${escapeObservation(candidate.packageName)};label=${escapeObservation(candidate.label)}]"
             }
-            .distinct()
-            .sorted()
-            .take(32)
-            .toList()
         val brightness = runCatching {
             Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
         }.getOrDefault(-1)
