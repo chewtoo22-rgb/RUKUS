@@ -37,7 +37,8 @@ class DeviceReadyExecutor(context: Context) {
             actions = actions,
             startStep = startStep,
             accessibilityReady = RuckusAccessibilityService.instance != null,
-            writeSettingsReady = Settings.System.canWrite(appContext)
+            writeSettingsReady = Settings.System.canWrite(appContext),
+            approvedShellReady = false // DeviceController's bounded Shizuku adapter is not implemented yet.
         )
         if (decision.allowed) return null
         ActionAudit.record("device-readiness", decision.action, "DEVICE_PREFLIGHT_BLOCKED: ${decision.reason}")
