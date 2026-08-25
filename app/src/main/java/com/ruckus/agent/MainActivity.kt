@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.ruckus.agent.control.RuckusAccessibilityService
 import com.ruckus.agent.control.ShizukuStateReader
 import com.ruckus.agent.core.AgentTaskState
+import com.ruckus.agent.core.CompletedTaskEvidencePolicy
 import com.ruckus.agent.core.DeviceReadyExecutor
 import com.ruckus.agent.core.ExecutionReport
 import com.ruckus.agent.personality.RuckusPersona
@@ -80,7 +81,11 @@ class MainActivity:ComponentActivity(){
     )
    }
    if(saved.status==AgentTaskState.Status.COMPLETE || saved.status==AgentTaskState.Status.FAILED){
-    val proofStatus=if(saved.status==AgentTaskState.Status.COMPLETE)"VERIFIED COMPLETE" else "FAILED / NOT PROVEN"
+    val proofStatus=when {
+     saved.status==AgentTaskState.Status.FAILED -> "FAILED / NOT PROVEN"
+     CompletedTaskEvidencePolicy.isStillValid(saved) -> "VERIFIED COMPLETE"
+     else -> "COMPLETION EVIDENCE STALE / NOT PROVEN"
+    }
     val action=saved.lastAction?.toString()?.take(180) ?: "none"
     val observation=saved.lastScreenSummary?.takeIf{it.isNotBlank()}?.take(500) ?: "no final screen observation"
     StatusCard(
