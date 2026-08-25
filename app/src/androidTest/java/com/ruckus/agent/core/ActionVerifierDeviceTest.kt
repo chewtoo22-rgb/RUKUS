@@ -48,4 +48,26 @@ class ActionVerifierDeviceTest {
         assertTrue(tap.ok)
         assertTrue(swipe.ok)
     }
+
+    @Test
+    fun privileged_completion_ack_must_match_exact_approved_command() {
+        val action = AgentAction.RunApprovedShell("wifi.toggle", mapOf("enabled" to "true"))
+        val exact = ActionVerifier.verify(
+            action,
+            before,
+            changed,
+            "status=ok | commandId=wifi.toggle | detail=completed",
+        )
+        val generic = ActionVerifier.verify(action, before, changed, "completed")
+        val wrongCommand = ActionVerifier.verify(
+            action,
+            before,
+            changed,
+            "status=ok | commandId=wifi.reset | detail=completed",
+        )
+
+        assertTrue(exact.ok)
+        assertFalse(generic.ok)
+        assertFalse(wrongCommand.ok)
+    }
 }
