@@ -6,16 +6,22 @@ import org.junit.Test
 class CrashRecoveryPolicyTest {
     @Test fun boundedIdempotentActionsMayReplay() {
         assertTrue(CrashRecoveryPolicy.decide(AgentAction.OpenApp("com.spotify.music")).replayAllowed)
-        assertTrue(CrashRecoveryPolicy.decide(AgentAction.TypeText("hello")).replayAllowed)
         assertTrue(CrashRecoveryPolicy.decide(AgentAction.SetMediaVolume(25)).replayAllowed)
         assertTrue(CrashRecoveryPolicy.decide(AgentAction.Home).replayAllowed)
     }
 
-    @Test fun ambiguousGesturesAndPrivilegedActionsNeverReplay() {
+    @Test fun ambiguousGesturesTextEntryAndPrivilegedActionsNeverReplay() {
         assertFalse(CrashRecoveryPolicy.decide(AgentAction.Back).replayAllowed)
         assertFalse(CrashRecoveryPolicy.decide(AgentAction.TapLabel("Allow")).replayAllowed)
+        assertFalse(CrashRecoveryPolicy.decide(AgentAction.TypeText("hello")).replayAllowed)
         assertFalse(CrashRecoveryPolicy.decide(AgentAction.Scroll(AgentAction.Direction.DOWN)).replayAllowed)
         assertFalse(CrashRecoveryPolicy.decide(AgentAction.RunApprovedShell("demo")).replayAllowed)
+    }
+
+    @Test fun textEntryCrashDecisionExplainsDuplicateSideEffectRisk() {
+        val decision = CrashRecoveryPolicy.decide(AgentAction.TypeText("hello"))
+        assertFalse(decision.replayAllowed)
+        assertTrue(decision.reason.contains("duplicate", ignoreCase = true))
     }
 
     @Test fun executingCheckpointIsResumableOnlyWithExactPlan() {
