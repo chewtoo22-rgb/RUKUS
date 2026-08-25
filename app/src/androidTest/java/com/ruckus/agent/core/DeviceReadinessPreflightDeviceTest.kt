@@ -58,4 +58,20 @@ class DeviceReadinessPreflightDeviceTest {
         )
         assertTrue(decision.allowed)
     }
+
+    @Test fun unavailableFutureAppBlocksWholeRemainingPlan() {
+        val missing = AgentAction.OpenAppByName("Definitely Missing")
+        val actions = listOf(AgentAction.SetMediaVolume(25), missing)
+        val decision = DeviceReadinessPreflight.evaluate(
+            actions = actions,
+            startStep = 0,
+            accessibilityReady = true,
+            writeSettingsReady = true,
+            approvedShellReady = true,
+            launchTargetReady = { it != missing }
+        )
+        assertFalse(decision.allowed)
+        assertEquals(1, decision.actionIndex)
+        assertEquals(missing, decision.action)
+    }
 }
