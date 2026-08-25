@@ -47,17 +47,26 @@ class ActionVerifierSemanticEffectTest {
     }
 
     @Test
-    fun raw_coordinate_actions_keep_adapter_acknowledgement_fallback() {
-        val tap = ActionVerifier.verify(AgentAction.Tap(10f, 20f), before, before, "Tapped")
-        val swipe = ActionVerifier.verify(
+    fun coordinate_gestures_require_observable_effect_even_when_adapter_reports_success() {
+        val unchangedTap = ActionVerifier.verify(AgentAction.Tap(10f, 20f), before, before, "Tapped")
+        val unchangedSwipe = ActionVerifier.verify(
             AgentAction.Swipe(10f, 20f, 10f, 200f),
             before,
             before,
             "Swiped",
         )
+        val changedTap = ActionVerifier.verify(AgentAction.Tap(10f, 20f), before, changed, "Tapped")
+        val changedSwipe = ActionVerifier.verify(
+            AgentAction.Swipe(10f, 20f, 10f, 200f),
+            before,
+            changed,
+            "Swiped",
+        )
 
-        assertTrue(tap.ok)
-        assertTrue(swipe.ok)
+        assertFalse(unchangedTap.ok)
+        assertFalse(unchangedSwipe.ok)
+        assertTrue(changedTap.ok)
+        assertTrue(changedSwipe.ok)
     }
 
     @Test
