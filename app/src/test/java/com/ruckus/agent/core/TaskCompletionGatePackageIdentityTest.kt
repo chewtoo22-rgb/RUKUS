@@ -44,4 +44,43 @@ class TaskCompletionGatePackageIdentityTest {
         assertFalse(TaskCompletionGate.evaluate(plan(AgentAction.OpenApp("com.example.app")), 1, "text=Home").ok)
         assertFalse(TaskCompletionGate.evaluate(plan(AgentAction.OpenApp("com.example.app")), 1, null).ok)
     }
+
+    @Test fun appNameCompletionRequiresForegroundPackageBoundToUniqueExactLabel() {
+        val finalScreen = "pkg=com.spotify.music | app[package=com.spotify.music;label=Spotify] • app[package=com.google.android.youtube;label=YouTube]"
+        val decision = TaskCompletionGate.evaluate(
+            plan(AgentAction.OpenAppByName(" spotify ")),
+            1,
+            finalScreen
+        )
+        assertTrue(decision.ok)
+    }
+
+    @Test fun unrelatedForegroundPackageCannotCompleteAppNameTask() {
+        val finalScreen = "pkg=com.google.android.youtube | app[package=com.spotify.music;label=Spotify] • app[package=com.google.android.youtube;label=YouTube]"
+        val decision = TaskCompletionGate.evaluate(
+            plan(AgentAction.OpenAppByName("Spotify")),
+            1,
+            finalScreen
+        )
+        assertFalse(decision.ok)
+    }
+
+    @Test fun ambiguousAppLabelCannotBecomeCompletionProof() {
+        val finalScreen = "pkg=com.example.photos.one | app[package=com.example.photos.one;label=Photos] • app[package=com.example.photos.two;label=Photos]"
+        val decision = TaskCompletionGate.evaluate(
+            plan(AgentAction.OpenAppByName("Photos")),
+            1,
+            finalScreen
+        )
+        assertFalse(decision.ok)
+    }
+
+    @Test fun appNameCompletionRequiresLaunchableInventoryEvidence() {
+        val decision = TaskCompletionGate.evaluate(
+            plan(AgentAction.OpenAppByName("Spotify")),
+            1,
+            "pkg=com.spotify.music | node[text=Spotify;clickable=false;enabled=true]"
+        )
+        assertFalse(decision.ok)
+    }
 }
