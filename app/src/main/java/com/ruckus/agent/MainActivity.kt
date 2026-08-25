@@ -17,20 +17,20 @@ import androidx.compose.ui.unit.dp
 import com.ruckus.agent.control.RuckusAccessibilityService
 import com.ruckus.agent.control.ShizukuStateReader
 import com.ruckus.agent.core.AgentTaskState
+import com.ruckus.agent.core.DeviceReadyExecutor
 import com.ruckus.agent.core.ExecutionReport
-import com.ruckus.agent.core.RuckusExecutor
 import com.ruckus.agent.personality.RuckusPersona
 import rikka.shizuku.Shizuku
 
 class MainActivity:ComponentActivity(){
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
-  val executor=RuckusExecutor(this)
+  val executor=DeviceReadyExecutor(this)
   setContent{MaterialTheme(colorScheme=darkColorScheme()){Surface(Modifier.fillMaxSize(),color=Color(0xFF090909)){Dashboard(executor,{startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))},{startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,Uri.parse("package:$packageName")))})}}}
  }
 }
 
-@Composable private fun Dashboard(executor:RuckusExecutor,onAccessibility:()->Unit,onWriteSettings:()->Unit){
+@Composable private fun Dashboard(executor:DeviceReadyExecutor,onAccessibility:()->Unit,onWriteSettings:()->Unit){
  var command by remember{mutableStateOf("")}
  var result by remember{mutableStateOf("Ready. Try: open Spotify, scroll down, inspect screen, tap Allow, volume 30")}
  var session by remember{mutableStateOf(executor.lastSession())}
