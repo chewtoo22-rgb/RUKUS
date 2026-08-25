@@ -74,4 +74,27 @@ class DeviceReadinessPreflightDeviceTest {
         assertEquals(1, decision.actionIndex)
         assertEquals(missing, decision.action)
     }
+
+    @Test fun ambiguousVisibleAppNameFailsClosedBeforeDispatch() {
+        val candidates = listOf(
+            AppLaunchMatchPolicy.Candidate("com.example.photos", "Photos"),
+            AppLaunchMatchPolicy.Candidate("com.example.photoeditor", "Photo Editor")
+        )
+        assertNull(AppLaunchMatchPolicy.resolve("Photo", candidates))
+
+        val launch = AgentAction.OpenAppByName("Photo")
+        val decision = DeviceReadinessPreflight.evaluate(
+            actions = listOf(AgentAction.SetMediaVolume(25), launch),
+            startStep = 0,
+            accessibilityReady = true,
+            writeSettingsReady = true,
+            approvedShellReady = true,
+            launchTargetReady = { action ->
+                action !is AgentAction.OpenAppByName || AppLaunchMatchPolicy.resolve(action.appName, candidates) != null
+            }
+        )
+        assertFalse(decision.allowed)
+        assertEquals(1, decision.actionIndex)
+        assertEquals(launch, decision.action)
+    }
 }
