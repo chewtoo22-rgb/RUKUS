@@ -51,7 +51,7 @@ object ActionVerifier {
             is AgentAction.SetBrightness -> verifyBrightness(action, after)
             is AgentAction.SetMediaVolume -> verifyMediaVolume(action, after)
             AgentAction.InspectScreen -> VerificationResult(after?.startsWith("pkg=")==true,"Package-aware screen inspection completed")
-            is AgentAction.RunApprovedShell -> VerificationResult(result != null,result ?: "Privileged action not acknowledged")
+            is AgentAction.RunApprovedShell -> verifyApprovedShell(action, result)
         }
     }
 
@@ -76,6 +76,29 @@ object ActionVerifier {
         return result.substring(valueStart)
             .takeWhile { !it.isWhitespace() && it != '|' }
             .trim()
+    }
+
+    private fun verifyApprovedShell(action:AgentAction.RunApprovedShell, result:String?):VerificationResult {
+        val acknowledgedCommandId = structuredField(result, "commandId")
+        val status = structuredField(result, "status")
+        return when {
+            result == null -> VerificationResult(false,"Privileged action produced no completion acknowledgment")
+            status != "ok" -> VerificationResult(false,"Privileged action did not report an explicit success status")
+            acknowledgedCommandId != action.commandId -> VerificationResult(false,"Privileged completion acknowledgment did not match the exact approved command")
+            else -> VerificationResult(true,"Exact approved privileged command reported structured completion")
+        }
+    }
+
+    private fun structuredField(result:String?, key:String):String? {
+        if(result == null) return null
+        return result.split('|', ' ', ';')
+            .mapNotNull { token ->
+                val separator = token.indexOf('=')
+                if(separator <= 0) null else token.substring(0, separator).trim() to token.substring(separator + 1).trim()
+            }
+            .firstOrNull { (name, _) -> name == key }
+            ?.second
+            ?.takeIf { it.isNotEmpty() }
     }
 
     private fun verifyBrightness(action:AgentAction.SetBrightness, after:String?):VerificationResult {
