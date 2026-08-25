@@ -257,4 +257,33 @@ class ActionVerifierSemanticEffectTest {
 
         assertFalse(result.ok)
     }
+
+    @Test
+    fun privileged_shell_requires_structured_success_for_exact_approved_command() {
+        val action = AgentAction.RunApprovedShell("wifi.toggle", mapOf("enabled" to "true"))
+        val verified = ActionVerifier.verify(
+            action,
+            before,
+            changed,
+            "status=ok | commandId=wifi.toggle | detail=completed",
+        )
+        val genericAck = ActionVerifier.verify(action, before, changed, "Command completed")
+        val wrongCommand = ActionVerifier.verify(
+            action,
+            before,
+            changed,
+            "status=ok | commandId=wifi.reset | detail=completed",
+        )
+        val failedStatus = ActionVerifier.verify(
+            action,
+            before,
+            changed,
+            "status=error | commandId=wifi.toggle | detail=denied",
+        )
+
+        assertTrue(verified.ok)
+        assertFalse(genericAck.ok)
+        assertFalse(wrongCommand.ok)
+        assertFalse(failedStatus.ok)
+    }
 }
