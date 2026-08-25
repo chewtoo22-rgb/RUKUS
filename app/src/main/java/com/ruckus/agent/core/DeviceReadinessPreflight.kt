@@ -12,9 +12,9 @@ data class DeviceReadinessDecision(
  *
  * MIYAGI's executor depends on Accessibility observations to settle and verify every
  * action. A plan must therefore fail before dispatch when the observation source is
- * unavailable instead of partially executing blind. Permission-gated or adapter-gated
- * device writes are also checked across the entire remaining plan so a later step
- * cannot strand a task after earlier side effects have already run.
+ * unavailable instead of partially executing blind. Permission-gated, adapter-gated,
+ * and launch-target device work is also checked across the entire remaining plan so a
+ * later step cannot strand a task after earlier side effects have already run.
  */
 object DeviceReadinessPreflight {
     fun evaluate(
@@ -22,7 +22,8 @@ object DeviceReadinessPreflight {
         startStep: Int,
         accessibilityReady: Boolean,
         writeSettingsReady: Boolean,
-        approvedShellReady: Boolean = false
+        approvedShellReady: Boolean = false,
+        launchTargetReady: (AgentAction) -> Boolean = { true }
     ): DeviceReadinessDecision {
         if (startStep !in 0..actions.size) {
             return DeviceReadinessDecision(false, "Invalid plan start step")
@@ -56,6 +57,18 @@ object DeviceReadinessPreflight {
                 "Approved shell adapter is unavailable; this plan cannot dispatch shell work",
                 actions[shellIndex],
                 shellIndex
+            )
+        }
+        val launchIndex = (startStep until actions.size).firstOrNull { index ->
+            val action = actions[index]
+            (action is AgentAction.OpenApp || action is AgentAction.OpenAppByName) && !launchTargetReady(action)
+        }
+        if (launchIndex != null) {
+            return DeviceReadinessDecision(
+                false,
+                "Requested app is not installed or launchable; refusing partial execution",
+                actions[launchIndex],
+                launchIndex
             )
         }
         return DeviceReadinessDecision(true, "Required device capabilities are ready")
