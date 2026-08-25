@@ -48,4 +48,25 @@ class ReasoningDispatchCoordinatorTest {
         assertTrue(result.actions.isEmpty())
         assertTrue(result.error.orEmpty().contains("UI changed", ignoreCase = true))
     }
+
+    @Test
+    fun `reasoning goal rejected by normal goal admission exposes no controller actions`() {
+        val proposal = ObservedPlanProposal.create(
+            goal = "Continue\u0001 in the current app",
+            actions = listOf(AgentAction.TapLabel("Continue")),
+            observation = screen,
+            nowEpochMs = 1_000L,
+        ).getOrThrow()
+
+        val result = ReasoningDispatchCoordinator.prepare(
+            proposal = proposal,
+            currentObservation = screen,
+            nowEpochMs = 1_500L,
+        )
+
+        assertFalse(result.allowed)
+        assertTrue(result.actions.isEmpty())
+        assertFalse(result.needsConfirmation)
+        assertTrue(result.error.orEmpty().contains("control", ignoreCase = true))
+    }
 }
