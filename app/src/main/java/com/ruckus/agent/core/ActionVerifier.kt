@@ -34,9 +34,8 @@ object ActionVerifier {
                 else VerificationResult(false,"Semantic scroll was dispatched but produced no observable UI change")
             }
             is AgentAction.Tap, is AgentAction.Swipe -> {
-                if(before != null && after != null && before != after) VerificationResult(true,"Visible UI changed")
-                else if(result != null) VerificationResult(true,"Action adapter reported success")
-                else VerificationResult(false,"No visible UI change or success result")
+                if(before != null && after != null && before != after) VerificationResult(true,"Visible UI changed after coordinate gesture")
+                else VerificationResult(false,"Coordinate gesture was dispatched but produced no observable UI change")
             }
             is AgentAction.TypeText -> {
                 val wasVisible = before?.contains(action.text, ignoreCase = true) == true
