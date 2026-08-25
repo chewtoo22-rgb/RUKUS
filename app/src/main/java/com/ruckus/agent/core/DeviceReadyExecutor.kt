@@ -1,6 +1,7 @@
 package com.ruckus.agent.core
 
 import android.content.Context
+import android.content.Intent
 import android.provider.Settings
 import com.ruckus.agent.control.RuckusAccessibilityService
 
@@ -38,7 +39,8 @@ class DeviceReadyExecutor(context: Context) {
             startStep = startStep,
             accessibilityReady = RuckusAccessibilityService.instance != null,
             writeSettingsReady = Settings.System.canWrite(appContext),
-            approvedShellReady = false // DeviceController's bounded Shizuku adapter is not implemented yet.
+            approvedShellReady = false, // DeviceController's bounded Shizuku adapter is not implemented yet.
+            launchTargetReady = ::isLaunchTargetReady
         )
         if (decision.allowed) return null
         ActionAudit.record("device-readiness", decision.action, "DEVICE_PREFLIGHT_BLOCKED: ${decision.reason}")
@@ -49,5 +51,25 @@ class DeviceReadyExecutor(context: Context) {
             completedSteps = startStep,
             totalSteps = actions.size
         )
+    }
+
+    private fun isLaunchTargetReady(action: AgentAction): Boolean = when (action) {
+        is AgentAction.OpenApp -> appContext.packageManager
+            .getLaunchIntentForPackage(action.packageName) != null
+        is AgentAction.OpenAppByName -> {
+            val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            val candidates = appContext.packageManager.queryIntentActivities(query, 0)
+            val exact = candidates.any { info ->
+                val label = runCatching { info.loadLabel(appContext.packageManager).toString() }.getOrDefault("")
+                label.equals(action.appName, ignoreCase = true) &&
+                    appContext.packageManager.getLaunchIntentForPackage(info.activityInfo.packageName) != null
+            }
+            exact || candidates.any { info ->
+                val label = runCatching { info.loadLabel(appContext.packageManager).toString() }.getOrDefault("")
+                label.contains(action.appName, ignoreCase = true) &&
+                    appContext.packageManager.getLaunchIntentForPackage(info.activityInfo.packageName) != null
+            }
+        }
+        else -> true
     }
 }
