@@ -83,4 +83,25 @@ class ReasoningDispatchDeviceTest {
         assertTrue(result.confirmationActionFingerprint.orEmpty().isNotBlank())
         assertTrue(result.error.orEmpty().contains("confirmation", ignoreCase = true))
     }
+
+    @Test
+    fun unsupportedControlCharactersCannotCrossFinalReasoningHandoff() {
+        val proposal = ObservedPlanProposal.create(
+            goal = "Continue\u0001 in the current app",
+            actions = listOf(AgentAction.TapLabel("Continue")),
+            observation = continueScreen,
+            nowEpochMs = 4_000L,
+        ).getOrThrow()
+
+        val result = ReasoningDispatchCoordinator.prepare(
+            proposal = proposal,
+            currentObservation = continueScreen,
+            nowEpochMs = 4_300L,
+        )
+
+        assertFalse(result.allowed)
+        assertTrue(result.actions.isEmpty())
+        assertFalse(result.needsConfirmation)
+        assertTrue(result.error.orEmpty().contains("control", ignoreCase = true))
+    }
 }
