@@ -71,6 +71,37 @@ class DeviceReadinessPreflightTest {
         assertTrue(decision.allowed)
     }
 
+    @Test fun unavailableLaterLaunchTargetBlocksEarlierSideEffects() {
+        val missingApp = AgentAction.OpenAppByName("Definitely Missing")
+        val actions = listOf(AgentAction.SetMediaVolume(20), missingApp)
+        val decision = DeviceReadinessPreflight.evaluate(
+            actions = actions,
+            startStep = 0,
+            accessibilityReady = true,
+            writeSettingsReady = true,
+            approvedShellReady = true,
+            launchTargetReady = { it != missingApp }
+        )
+        assertFalse(decision.allowed)
+        assertEquals(1, decision.actionIndex)
+        assertEquals(missingApp, decision.action)
+        assertTrue(decision.reason.contains("not installed", ignoreCase = true))
+    }
+
+    @Test fun completedMissingLaunchDoesNotPoisonResumedRemainder() {
+        val missingApp = AgentAction.OpenApp("com.example.missing")
+        val actions = listOf(missingApp, AgentAction.Home)
+        val decision = DeviceReadinessPreflight.evaluate(
+            actions = actions,
+            startStep = 1,
+            accessibilityReady = true,
+            writeSettingsReady = true,
+            approvedShellReady = true,
+            launchTargetReady = { false }
+        )
+        assertTrue(decision.allowed)
+    }
+
     @Test fun completedBrightnessDoesNotPoisonResumedRemainder() {
         val actions = listOf(AgentAction.SetBrightness(40), AgentAction.Home)
         val decision = DeviceReadinessPreflight.evaluate(
