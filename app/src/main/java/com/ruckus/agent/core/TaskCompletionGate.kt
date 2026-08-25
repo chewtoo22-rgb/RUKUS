@@ -47,8 +47,8 @@ object TaskCompletionGate {
             is AgentAction.Tap, is AgentAction.TapLabel,
             is AgentAction.Swipe, is AgentAction.Scroll,
             AgentAction.InspectScreen -> {
-                if(!finalScreen.isNullOrBlank()) CompletionDecision(true,"Final UI checkpoint is observable")
-                else CompletionDecision(false,"Final UI checkpoint is unavailable")
+                if(foregroundPackage(finalScreen)!=null) CompletionDecision(true,"Final package-aware UI checkpoint is observable")
+                else CompletionDecision(false,"Final package-aware UI checkpoint is unavailable")
             }
             is AgentAction.SetBrightness, is AgentAction.SetMediaVolume,
             is AgentAction.RunApprovedShell -> CompletionDecision(true,"Terminal action was already verified by its action-specific verifier")
