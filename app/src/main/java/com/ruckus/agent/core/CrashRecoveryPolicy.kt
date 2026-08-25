@@ -13,7 +13,6 @@ object CrashRecoveryPolicy {
     fun decide(action: AgentAction): CrashRecoveryDecision = when (action) {
         is AgentAction.OpenApp,
         is AgentAction.OpenAppByName,
-        is AgentAction.TypeText,
         is AgentAction.SetBrightness,
         is AgentAction.SetMediaVolume,
         AgentAction.Home,
@@ -22,8 +21,9 @@ object CrashRecoveryPolicy {
         AgentAction.Back,
         is AgentAction.Tap,
         is AgentAction.TapLabel,
+        is AgentAction.TypeText,
         is AgentAction.Swipe,
-        is AgentAction.Scroll -> CrashRecoveryDecision(false, "Gesture/navigation outcome is ambiguous; replay could duplicate a side effect")
+        is AgentAction.Scroll -> CrashRecoveryDecision(false, "Action outcome is ambiguous; replay could duplicate or compound a side effect")
 
         is AgentAction.RunApprovedShell -> CrashRecoveryDecision(false, "Privileged actions are never replayed after an ambiguous crash")
     }
