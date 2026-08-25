@@ -1,7 +1,6 @@
 package com.ruckus.agent.core
 
 import android.content.Context
-import android.content.Intent
 import android.provider.Settings
 import com.ruckus.agent.control.RuckusAccessibilityService
 
@@ -56,17 +55,7 @@ class DeviceReadyExecutor(context: Context) {
     private fun isLaunchTargetReady(action: AgentAction): Boolean = when (action) {
         is AgentAction.OpenApp -> appContext.packageManager
             .getLaunchIntentForPackage(action.packageName) != null
-        is AgentAction.OpenAppByName -> {
-            val packageManager = appContext.packageManager
-            val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-            val candidates = packageManager.queryIntentActivities(query, 0).mapNotNull { info ->
-                val packageName = info.activityInfo?.packageName?.trim().orEmpty()
-                val label = runCatching { info.loadLabel(packageManager).toString().trim() }.getOrDefault("")
-                if (packageName.isBlank() || label.isBlank()) null
-                else AppLaunchMatchPolicy.Candidate(packageName, label)
-            }.filter { candidate -> packageManager.getLaunchIntentForPackage(candidate.packageName) != null }
-            AppLaunchMatchPolicy.resolve(action.appName, candidates) != null
-        }
+        is AgentAction.OpenAppByName -> InstalledAppLaunchResolver.resolve(appContext, action.appName) != null
         else -> true
     }
 }
