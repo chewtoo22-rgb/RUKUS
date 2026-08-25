@@ -25,4 +25,13 @@ class TaskCompletionGateAppIdentityDeviceTest {
 
         assertFalse(TaskCompletionGate.evaluate(plan(AgentAction.OpenAppByName("Photos")), 1, ambiguous).ok)
     }
+
+    @Test
+    fun terminalGestureCompletionRequiresPackageAwareFinalObservation() {
+        val action = AgentAction.TapLabel("Continue")
+
+        assertFalse(TaskCompletionGate.evaluate(plan(action), 1, "text=Continue clickable=true").ok)
+        assertFalse(TaskCompletionGate.evaluate(plan(action), 1, "pkg=").ok)
+        assertTrue(TaskCompletionGate.evaluate(plan(action), 1, "pkg=com.example.app | text=Next").ok)
+    }
 }
