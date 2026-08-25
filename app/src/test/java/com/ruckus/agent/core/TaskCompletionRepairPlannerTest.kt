@@ -17,10 +17,11 @@ class TaskCompletionRepairPlannerTest {
         assertEquals(original,repair.action)
     }
 
-    @Test fun typedTextGoalGetsOneExactRepair() {
+    @Test fun typedTextGoalFailsClosedInsteadOfReplaying() {
         val original=AgentAction.TypeText("hello")
         val repair=TaskCompletionRepairPlanner.plan(original,"text evidence disappeared")
-        assertEquals(original,repair.action)
+        assertNull(repair.action)
+        assertTrue(repair.reason.contains("do not replay"))
     }
 
     @Test fun consequentialOrAmbiguousTerminalActionsAreNotReplayed() {
