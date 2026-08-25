@@ -21,9 +21,22 @@ object TaskCompletionGate {
                 else CompletionDecision(false,"Requested app is not confirmed in the final foreground state")
             }
             is AgentAction.OpenAppByName -> {
-                if(foregroundPackage(finalScreen) != null)
-                    CompletionDecision(true,"Final foreground app state is observable")
-                else CompletionDecision(false,"Final foreground app could not be observed")
+                val observedPkg = foregroundPackage(finalScreen)
+                val normalizedObservation = ObservedPlanProposal.normalizeObservation(finalScreen)
+                val targetLabel = ReasoningGroundingPolicy.normalizeLabel(last.appName)
+                val packages = normalizedObservation
+                    ?.let(ReasoningGroundingPolicy::launchableLabelPackages)
+                    ?.get(targetLabel)
+                    .orEmpty()
+                if(targetLabel.isEmpty()) {
+                    CompletionDecision(false,"Requested app label is blank")
+                } else if(packages.size != 1) {
+                    CompletionDecision(false,"Requested app label is not uniquely bound in the final launchable-app inventory")
+                } else if(observedPkg.equals(packages.single(), ignoreCase = true)) {
+                    CompletionDecision(true,"Final foreground package matches the uniquely resolved requested app label")
+                } else {
+                    CompletionDecision(false,"Final foreground package does not match the requested app label")
+                }
             }
             is AgentAction.TypeText -> {
                 if(finalScreen?.contains(last.text,ignoreCase=true)==true)
