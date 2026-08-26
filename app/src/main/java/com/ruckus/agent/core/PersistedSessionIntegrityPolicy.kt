@@ -49,7 +49,8 @@ object PersistedSessionIntegrityPolicy {
             return reject("Active persisted task has no plan fingerprint")
         }
 
-        if (session.status == AgentTaskState.Status.EXECUTING ||
+        if (session.status == AgentTaskState.Status.RECOVERING ||
+            session.status == AgentTaskState.Status.EXECUTING ||
             session.status == AgentTaskState.Status.WAITING_CONFIRMATION
         ) {
             if (session.currentStep >= session.totalSteps) {
