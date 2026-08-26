@@ -6,7 +6,7 @@ import org.junit.Test
 
 class CompletedTaskEvidencePolicyTest {
     @Test
-    fun currentPlannerTerminalActionKeepsCompletionEvidenceValid() {
+    fun currentPlannerTerminalActionAndProofKeepCompletionEvidenceValid() {
         val session = completeSession("home then back")
 
         assertTrue(CompletedTaskEvidencePolicy.isStillValid(session))
@@ -26,9 +26,24 @@ class CompletedTaskEvidencePolicyTest {
         assertFalse(CompletedTaskEvidencePolicy.isStillValid(session))
     }
 
+    @Test
+    fun selfConsistentButNoLongerSufficientTerminalObservationFailsClosed() {
+        val session = completeSession(
+            request = "home then back",
+            lastScreenSummaryOverride = "screen=Home | verified=true"
+        )
+
+        // The stored digests are valid, but the current completion gate requires package-aware
+        // terminal UI evidence for Back/Home-style goals. Durable evidence must be re-proven
+        // under the shipping completion semantics rather than trusted forever.
+        assertTrue(PersistedSessionIntegrityPolicy.evaluate(session).allowed)
+        assertFalse(CompletedTaskEvidencePolicy.isStillValid(session))
+    }
+
     private fun completeSession(
         request: String,
-        lastActionOverride: String? = null
+        lastActionOverride: String? = null,
+        lastScreenSummaryOverride: String? = null
     ): PersistedTaskSession {
         val plan = CommandPlanner.plan(request)
         check(plan.actions.isNotEmpty() && plan.rejectedParts.isEmpty())
@@ -38,7 +53,7 @@ class CompletedTaskEvidencePolicyTest {
             currentStep = plan.actions.size,
             totalSteps = plan.actions.size,
             lastAction = lastActionOverride ?: plan.actions.last().toString(),
-            lastScreenSummary = "pkg=com.example.test",
+            lastScreenSummary = lastScreenSummaryOverride ?: "pkg=com.example.test | screen=Home | verified=true",
             recoveryAttempts = 0,
             status = AgentTaskState.Status.COMPLETE,
             savedAtMs = System.currentTimeMillis(),
