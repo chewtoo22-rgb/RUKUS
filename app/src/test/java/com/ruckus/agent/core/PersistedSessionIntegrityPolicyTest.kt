@@ -108,6 +108,18 @@ class PersistedSessionIntegrityPolicyTest {
         assertTrue(decision.reason.contains("fingerprint"))
     }
 
+    @Test fun runningCheckpointCannotClaimThePlanIsAlreadyFinished() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(
+            session(
+                currentStep=1,
+                totalSteps=1,
+                status=AgentTaskState.Status.RUNNING
+            )
+        )
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("no remaining action"))
+    }
+
     @Test fun pendingCheckpointWithoutActionIdentityFailsClosed() {
         val decision=PersistedSessionIntegrityPolicy.evaluate(session(lastAction=null))
         assertFalse(decision.allowed)
