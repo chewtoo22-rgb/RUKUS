@@ -88,7 +88,7 @@ class CommandParserTest {
  @Test fun waitingSessionResumesAtCurrentCheckpoint(){
   val request="home then volume 25"
   val plan=CommandPlanner.plan(request)
-  val session=PersistedTaskSession(request,1,2,"Home","pkg=launcher",0,AgentTaskState.Status.WAITING_CONFIRMATION,123L,PlanFingerprint.of(plan))
+  val session=PersistedTaskSession(request,1,2,plan.actions[1].toString(),"pkg=launcher",0,AgentTaskState.Status.WAITING_CONFIRMATION,123L,PlanFingerprint.of(plan))
   val resume=ResumePolicy.decide(session,plan)
   assertTrue(resume.allowed); assertEquals(1,resume.startStep)
  }
