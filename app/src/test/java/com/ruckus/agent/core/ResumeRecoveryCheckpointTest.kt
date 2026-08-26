@@ -26,7 +26,7 @@ class ResumeRecoveryCheckpointTest {
             planFingerprint = PlanFingerprint.of(plan)
         )
 
-        val decision = ResumePolicy.decide(session, plan)
+        val decision = ResumePolicy.decide(session, plan, nowMs = session.savedAtMs)
 
         assertFalse(decision.allowed)
         assertTrue(decision.reason.contains("alternate action", ignoreCase = true))
@@ -51,7 +51,7 @@ class ResumeRecoveryCheckpointTest {
             planFingerprint = PlanFingerprint.of(plan)
         )
 
-        val decision = ResumePolicy.decide(session, plan)
+        val decision = ResumePolicy.decide(session, plan, nowMs = session.savedAtMs)
 
         assertTrue(decision.allowed)
         assertEquals(0, decision.startStep)
