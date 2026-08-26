@@ -115,6 +115,15 @@ class CommandParserTest {
   val session=PersistedTaskSession("home then scroll down",1,2,"Home","pkg=x",0,AgentTaskState.Status.RUNNING,123L)
   assertFalse(ResumePolicy.decide(session,plan).allowed)
  }
+ @Test fun resumeRejectsRecoveryCountBeyondBudget(){
+  val request="home then scroll down"
+  val plan=CommandPlanner.plan(request)
+  val session=PersistedTaskSession(request,1,2,"Home","pkg=x",RecoveryBudget.MAX_TOTAL_ATTEMPTS+1,AgentTaskState.Status.RECOVERING,123L,PlanFingerprint.of(plan))
+  val decision=ResumePolicy.decide(session,plan)
+  assertFalse(decision.allowed)
+  assertTrue(decision.reason.contains("recovery",ignoreCase=true))
+  assertTrue(decision.reason.contains("budget",ignoreCase=true))
+ }
  @Test fun fingerprintIsStableAndArgumentOrderIndependent(){
   val a=CommandPlanner.Plan(listOf(AgentAction.RunApprovedShell("demo",mapOf("b" to "2","a" to "1"))),emptyList())
   val b=CommandPlanner.Plan(listOf(AgentAction.RunApprovedShell("demo",mapOf("a" to "1","b" to "2"))),emptyList())
