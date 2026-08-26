@@ -1,9 +1,10 @@
 package com.ruckus.agent.core
 
 /**
- * Revalidates durable COMPLETE evidence against the planner currently shipping in the app.
- * A persisted completion checkpoint is proof of a specific admitted plan, not permission to
- * display VERIFIED COMPLETE forever if parsing/admission semantics later change.
+ * Revalidates durable COMPLETE evidence against the planner and completion semantics currently
+ * shipping in the app. A persisted completion checkpoint is proof of a specific admitted plan
+ * and terminal observation, not permission to display VERIFIED COMPLETE forever if parsing,
+ * admission, or completion-proof rules later change.
  */
 object CompletedTaskEvidencePolicy {
     fun isStillValid(session: PersistedTaskSession): Boolean {
@@ -21,6 +22,14 @@ object CompletedTaskEvidencePolicy {
         // prove stored bytes were not corrupted; this check proves those bytes still describe
         // the semantic endpoint of the admitted plan rather than some other terminal action.
         if (session.lastAction != plan.actions.last().toString()) return false
+
+        // Completion semantics can tighten independently of parsing/admission. Re-run the
+        // current completion gate against the persisted final observation so a checkpoint that
+        // was once accepted cannot remain VERIFIED COMPLETE after the app learns to require
+        // stronger terminal evidence.
+        if (!TaskCompletionGate.evaluate(plan, session.currentStep, session.lastScreenSummary).ok) {
+            return false
+        }
 
         return true
     }
