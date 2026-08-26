@@ -49,6 +49,10 @@ object PersistedSessionIntegrityPolicy {
             return reject("Active persisted task has no plan fingerprint")
         }
 
+        if (session.status == AgentTaskState.Status.RUNNING && session.currentStep >= session.totalSteps) {
+            return reject("Running checkpoint has no remaining action; completion must be re-established from a fresh request")
+        }
+
         if (session.status == AgentTaskState.Status.RECOVERING ||
             session.status == AgentTaskState.Status.EXECUTING ||
             session.status == AgentTaskState.Status.WAITING_CONFIRMATION
