@@ -48,6 +48,25 @@ class ResumeAdmissionDeviceTest {
     }
 
     @Test
+    fun waitingConfirmationRejectsCheckpointBoundToDifferentAction() {
+        val privileged = AgentAction.RunApprovedShell("demo")
+        val actions = listOf(AgentAction.Home, privileged)
+        val plan = CommandPlanner.Plan(actions, emptyList())
+        val session = checkpoint(
+            plan = plan,
+            currentStep = 1,
+            status = AgentTaskState.Status.WAITING_CONFIRMATION,
+            lastAction = AgentAction.Home
+        )
+
+        val decision = ResumePolicy.decide(session, plan)
+
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("confirmation checkpoint action differs", ignoreCase = true))
+        assertTrue(decision.reason.contains("fresh user request", ignoreCase = true))
+    }
+
+    @Test
     fun resumedRemainingPlanStillRequiresExactPrivilegedConfirmation() {
         val privileged = AgentAction.RunApprovedShell("demo")
         val actions = listOf(AgentAction.Home, privileged)
