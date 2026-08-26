@@ -32,6 +32,31 @@ class ResumeConfirmationCheckpointTest {
     }
 
     @Test
+    fun waitingConfirmationRejectsExactSafeActionCheckpoint() {
+        val safeAction = AgentAction.Home
+        val plan = CommandPlanner.Plan(
+            actions = listOf(safeAction),
+            rejectedParts = emptyList()
+        )
+        val session = PersistedTaskSession(
+            request = "go home",
+            currentStep = 0,
+            totalSteps = plan.actions.size,
+            lastAction = safeAction.toString(),
+            lastScreenSummary = "pkg=com.android.launcher",
+            recoveryAttempts = 0,
+            status = AgentTaskState.Status.WAITING_CONFIRMATION,
+            savedAtMs = 1L,
+            planFingerprint = PlanFingerprint.of(plan)
+        )
+
+        val decision = ResumePolicy.decide(session, plan)
+
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("requires explicit approval", ignoreCase = true))
+    }
+
+    @Test
     fun waitingConfirmationWithExactActionRemainsGatedAtSameStep() {
         val privileged = AgentAction.RunApprovedShell("demo")
         val plan = CommandPlanner.Plan(
