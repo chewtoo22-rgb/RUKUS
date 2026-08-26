@@ -25,7 +25,7 @@ class ResumeConfirmationCheckpointTest {
             planFingerprint = PlanFingerprint.of(plan)
         )
 
-        val decision = ResumePolicy.decide(session, plan)
+        val decision = ResumePolicy.decide(session, plan, nowMs = session.savedAtMs)
 
         assertFalse(decision.allowed)
         assertTrue(decision.reason.contains("confirmation checkpoint action differs", ignoreCase = true))
@@ -50,7 +50,7 @@ class ResumeConfirmationCheckpointTest {
             planFingerprint = PlanFingerprint.of(plan)
         )
 
-        val decision = ResumePolicy.decide(session, plan)
+        val decision = ResumePolicy.decide(session, plan, nowMs = session.savedAtMs)
 
         assertFalse(decision.allowed)
         assertTrue(decision.reason.contains("requires explicit approval", ignoreCase = true))
@@ -75,7 +75,7 @@ class ResumeConfirmationCheckpointTest {
             planFingerprint = PlanFingerprint.of(plan)
         )
 
-        val decision = ResumePolicy.decide(session, plan)
+        val decision = ResumePolicy.decide(session, plan, nowMs = session.savedAtMs)
 
         assertTrue(decision.allowed)
         assertEquals(1, decision.startStep)
