@@ -14,6 +14,14 @@ object CompletedTaskEvidencePolicy {
         if (plan.actions.isEmpty() || plan.rejectedParts.isNotEmpty()) return false
         if (plan.actions.size != session.totalSteps) return false
         if (PlanFingerprint.of(plan) != session.planFingerprint) return false
-        return session.currentStep == plan.actions.size
+        if (session.currentStep != plan.actions.size) return false
+
+        // Durable completion evidence must still describe the exact terminal action of the
+        // plan produced by the currently shipping planner. The checkpoint/evidence digests
+        // prove stored bytes were not corrupted; this check proves those bytes still describe
+        // the semantic endpoint of the admitted plan rather than some other terminal action.
+        if (session.lastAction != plan.actions.last().toString()) return false
+
+        return true
     }
 }
