@@ -32,6 +32,9 @@ object ResumePolicy {
         if (session.currentStep < 0 || session.currentStep > plan.actions.size) {
             return ResumeDecision(false, reason = "Saved checkpoint step is outside the exact saved plan")
         }
+        if (session.recoveryAttempts !in 0..RecoveryBudget.MAX_TOTAL_ATTEMPTS) {
+            return ResumeDecision(false, reason = "Saved checkpoint recovery count is outside the bounded recovery budget")
+        }
         val step = session.currentStep
         if (step >= plan.actions.size) return ResumeDecision(false, reason = "All planned steps are already checkpointed")
 
