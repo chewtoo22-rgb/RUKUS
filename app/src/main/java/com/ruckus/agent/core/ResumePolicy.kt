@@ -46,6 +46,17 @@ object ResumePolicy {
             }
         }
 
+        if (session.status == AgentTaskState.Status.WAITING_CONFIRMATION) {
+            val expectedPending = plan.actions.getOrNull(step)
+                ?: return ResumeDecision(false, reason = "Confirmation checkpoint no longer maps to the saved plan")
+            if (session.lastAction != expectedPending.toString()) {
+                return ResumeDecision(
+                    false,
+                    reason = "Confirmation checkpoint action differs from the exact saved plan; confirmation must be reacquired from a fresh user request"
+                )
+            }
+        }
+
         return when (session.status) {
             AgentTaskState.Status.WAITING_CONFIRMATION -> ResumeDecision(true, step, "Resume at confirmation-gated step with exact saved plan")
             AgentTaskState.Status.EXECUTING -> ResumeDecision(true, step, "Reconcile ambiguous in-flight action before any replay")
