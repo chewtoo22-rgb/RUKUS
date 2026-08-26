@@ -196,7 +196,7 @@ class RuckusExecutor(context:Context){
             if(repairAction!=null && SafetyGate.classify(repairAction).risk==Risk.SAFE) {
                 reserveRecovery(repairAction,plan.actions.lastIndex,"Completion repair: ${repair.reason}")?.let { return it }
                 val beforeRepair=finalScreen
-                setState(AgentTaskState(request,plan.actions.size,plan.actions.size,repairAction,beforeRepair,recoveryAttempts,AgentTaskState.Status.RECOVERING))
+                setState(AgentTaskState(request,plan.actions.lastIndex,plan.actions.size,repairAction,beforeRepair,recoveryAttempts,AgentTaskState.Status.RECOVERING))
                 ActionAudit.record(request,repairAction,"COMPLETION_REPAIR: ${repair.reason}")
                 setState(AgentTaskState(request,plan.actions.lastIndex,plan.actions.size,repairAction,beforeRepair,recoveryAttempts,AgentTaskState.Status.EXECUTING))
                 val repairResult=controller.execute(repairAction)
