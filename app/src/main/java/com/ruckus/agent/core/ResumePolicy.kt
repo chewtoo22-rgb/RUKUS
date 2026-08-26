@@ -69,6 +69,12 @@ object ResumePolicy {
                     reason = "Confirmation checkpoint action differs from the exact saved plan; confirmation must be reacquired from a fresh user request"
                 )
             }
+            if (SafetyGate.classify(expectedPending).risk != Risk.CONFIRM) {
+                return ResumeDecision(
+                    false,
+                    reason = "Confirmation checkpoint no longer maps to an action that requires explicit approval; start a fresh user request"
+                )
+            }
         }
 
         return when (session.status) {
