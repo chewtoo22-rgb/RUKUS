@@ -126,6 +126,28 @@ class ResumeAdmissionDeviceTest {
         assertEquals(2, decision.startStep)
     }
 
+    @Test
+    fun overBudgetRecoveryCheckpointCannotResume() {
+        val plan = CommandPlanner.plan("home then scroll down")
+        val session = PersistedTaskSession(
+            request = "device recovery budget probe",
+            currentStep = 1,
+            totalSteps = plan.actions.size,
+            lastAction = plan.actions[0].toString(),
+            lastScreenSummary = "pkg=com.example | labels=Ready",
+            recoveryAttempts = RecoveryBudget.MAX_TOTAL_ATTEMPTS + 1,
+            status = AgentTaskState.Status.RECOVERING,
+            savedAtMs = System.currentTimeMillis(),
+            planFingerprint = PlanFingerprint.of(plan)
+        )
+
+        val decision = ResumePolicy.decide(session, plan)
+
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("recovery", ignoreCase = true))
+        assertTrue(decision.reason.contains("budget", ignoreCase = true))
+    }
+
     private fun checkpoint(
         plan: CommandPlanner.Plan,
         currentStep: Int,
