@@ -37,7 +37,7 @@ class CrashRecoveryPolicyTest {
             savedAtMs=1L,
             planFingerprint=PlanFingerprint.of(plan)
         )
-        val decision=ResumePolicy.decide(session,plan)
+        val decision=ResumePolicy.decide(session,plan,nowMs=session.savedAtMs)
         assertTrue(decision.allowed)
         assertEquals(0,decision.startStep)
         assertTrue(decision.reason.contains("in-flight",ignoreCase=true))
@@ -57,7 +57,7 @@ class CrashRecoveryPolicyTest {
             planFingerprint=PlanFingerprint.of(plan)
         )
 
-        val decision=ResumePolicy.decide(session,plan)
+        val decision=ResumePolicy.decide(session,plan,nowMs=session.savedAtMs)
 
         assertFalse(decision.allowed)
         assertTrue(decision.reason.contains("differs",ignoreCase=true))
