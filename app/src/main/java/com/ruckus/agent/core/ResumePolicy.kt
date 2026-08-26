@@ -49,6 +49,17 @@ object ResumePolicy {
             }
         }
 
+        if (session.status == AgentTaskState.Status.RECOVERING) {
+            val expectedRecovery = plan.actions.getOrNull(step)
+                ?: return ResumeDecision(false, reason = "Recovery checkpoint no longer maps to the saved plan")
+            if (session.lastAction != expectedRecovery.toString()) {
+                return ResumeDecision(
+                    false,
+                    reason = "Recovery checkpoint contains an alternate action that cannot be reconstructed safely after restart; start a fresh user request"
+                )
+            }
+        }
+
         if (session.status == AgentTaskState.Status.WAITING_CONFIRMATION) {
             val expectedPending = plan.actions.getOrNull(step)
                 ?: return ResumeDecision(false, reason = "Confirmation checkpoint no longer maps to the saved plan")
