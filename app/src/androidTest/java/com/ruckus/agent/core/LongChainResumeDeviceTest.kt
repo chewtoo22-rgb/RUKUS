@@ -118,4 +118,30 @@ class LongChainResumeDeviceTest {
             exhausted.reason
         )
     }
+
+    @Test
+    fun malformedCheckpointOutsidePlanFailsClosedInsteadOfBeingClamped() {
+        val request = "home then back then home then back"
+        val plan = CommandPlanner.plan(request)
+        assertTrue(plan.rejectedParts.isEmpty())
+
+        val malformed = PersistedTaskSession(
+            request = request,
+            currentStep = plan.actions.size + 1,
+            totalSteps = plan.actions.size,
+            lastAction = plan.actions.last().toString(),
+            lastScreenSummary = "pkg=com.android.launcher | screen=Home | impossibleCheckpoint=true",
+            recoveryAttempts = 0,
+            status = AgentTaskState.Status.RUNNING,
+            savedAtMs = System.currentTimeMillis(),
+            planFingerprint = PlanFingerprint.of(plan),
+            schemaVersion = PERSISTED_SESSION_SCHEMA_VERSION,
+            completionEvidenceDigest = null,
+            checkpointDigest = null
+        )
+
+        val decision = ResumePolicy.decide(malformed, plan)
+        assertFalse(decision.allowed)
+        assertEquals("Saved checkpoint step is outside the exact saved plan", decision.reason)
+    }
 }
