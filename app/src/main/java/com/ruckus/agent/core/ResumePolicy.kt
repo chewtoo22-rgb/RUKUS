@@ -29,7 +29,10 @@ object ResumePolicy {
         if (session.status == AgentTaskState.Status.FAILED) return ResumeDecision(false, reason = "Failed tasks require a fresh user request")
         if (session.status == AgentTaskState.Status.IDLE) return ResumeDecision(false, reason = "No active task to resume")
 
-        val step = session.currentStep.coerceIn(0, plan.actions.size)
+        if (session.currentStep < 0 || session.currentStep > plan.actions.size) {
+            return ResumeDecision(false, reason = "Saved checkpoint step is outside the exact saved plan")
+        }
+        val step = session.currentStep
         if (step >= plan.actions.size) return ResumeDecision(false, reason = "All planned steps are already checkpointed")
 
         if (session.status == AgentTaskState.Status.EXECUTING) {
