@@ -82,14 +82,14 @@ class CommandParserTest {
   val request="home then scroll down then volume 25"
   val plan=CommandPlanner.plan(request)
   val session=PersistedTaskSession(request,1,3,"Home","pkg=launcher",0,AgentTaskState.Status.RUNNING,123L,PlanFingerprint.of(plan))
-  val resume=ResumePolicy.decide(session,plan)
+  val resume=ResumePolicy.decide(session,plan,nowMs=session.savedAtMs)
   assertTrue(resume.allowed); assertEquals(1,resume.startStep)
  }
  @Test fun waitingSessionResumesAtCurrentCheckpoint(){
   val request="privileged shell demo"
   val plan=CommandPlanner.Plan(listOf(AgentAction.RunApprovedShell("demo")),emptyList())
   val session=PersistedTaskSession(request,0,1,plan.actions[0].toString(),"pkg=launcher",0,AgentTaskState.Status.WAITING_CONFIRMATION,123L,PlanFingerprint.of(plan))
-  val resume=ResumePolicy.decide(session,plan)
+  val resume=ResumePolicy.decide(session,plan,nowMs=session.savedAtMs)
   assertTrue(resume.allowed); assertEquals(0,resume.startStep)
  }
  @Test fun resumeRejectsCompletedFailedAndChangedPlans(){
@@ -98,28 +98,28 @@ class CommandParserTest {
   val complete=PersistedTaskSession(request,2,2,"Scroll","pkg=x",0,AgentTaskState.Status.COMPLETE,123L,PlanFingerprint.of(plan))
   val failed=complete.copy(currentStep=1,status=AgentTaskState.Status.FAILED)
   val changed=complete.copy(currentStep=1,totalSteps=3,status=AgentTaskState.Status.RUNNING)
-  assertFalse(ResumePolicy.decide(complete,plan).allowed)
-  assertFalse(ResumePolicy.decide(failed,plan).allowed)
-  assertFalse(ResumePolicy.decide(changed,plan).allowed)
+  assertFalse(ResumePolicy.decide(complete,plan,nowMs=complete.savedAtMs).allowed)
+  assertFalse(ResumePolicy.decide(failed,plan,nowMs=failed.savedAtMs).allowed)
+  assertFalse(ResumePolicy.decide(changed,plan,nowMs=changed.savedAtMs).allowed)
  }
  @Test fun resumeRejectsSameLengthPlanWithDifferentSemantics(){
   val oldPlan=CommandPlanner.Plan(listOf(AgentAction.Home,AgentAction.Scroll(AgentAction.Direction.DOWN)),emptyList())
   val newPlan=CommandPlanner.Plan(listOf(AgentAction.Home,AgentAction.Scroll(AgentAction.Direction.UP)),emptyList())
   val session=PersistedTaskSession("saved",1,2,"Home","pkg=x",0,AgentTaskState.Status.RUNNING,123L,PlanFingerprint.of(oldPlan))
-  val decision=ResumePolicy.decide(session,newPlan)
+  val decision=ResumePolicy.decide(session,newPlan,nowMs=session.savedAtMs)
   assertFalse(decision.allowed)
   assertTrue(decision.reason.contains("semantics",ignoreCase=true))
  }
  @Test fun resumeRejectsLegacyCheckpointWithoutFingerprint(){
   val plan=CommandPlanner.plan("home then scroll down")
   val session=PersistedTaskSession("home then scroll down",1,2,"Home","pkg=x",0,AgentTaskState.Status.RUNNING,123L)
-  assertFalse(ResumePolicy.decide(session,plan).allowed)
+  assertFalse(ResumePolicy.decide(session,plan,nowMs=session.savedAtMs).allowed)
  }
  @Test fun resumeRejectsRecoveryCountBeyondBudget(){
   val request="home then scroll down"
   val plan=CommandPlanner.plan(request)
   val session=PersistedTaskSession(request,1,2,"Home","pkg=x",RecoveryBudget.MAX_TOTAL_ATTEMPTS+1,AgentTaskState.Status.RECOVERING,123L,PlanFingerprint.of(plan))
-  val decision=ResumePolicy.decide(session,plan)
+  val decision=ResumePolicy.decide(session,plan,nowMs=session.savedAtMs)
   assertFalse(decision.allowed)
   assertTrue(decision.reason.contains("recovery",ignoreCase=true))
   assertTrue(decision.reason.contains("budget",ignoreCase=true))
