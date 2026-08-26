@@ -114,6 +114,22 @@ class PersistedSessionIntegrityPolicyTest {
         assertTrue(decision.reason.contains("action identity"))
     }
 
+    @Test fun recoveringCheckpointWithoutActionIdentityFailsClosed() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(
+            session(status=AgentTaskState.Status.RECOVERING,lastAction=null)
+        )
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("action identity"))
+    }
+
+    @Test fun recoveringCheckpointCannotPointAtCompletedPlan() {
+        val decision=PersistedSessionIntegrityPolicy.evaluate(
+            session(status=AgentTaskState.Status.RECOVERING,currentStep=1,totalSteps=1)
+        )
+        assertFalse(decision.allowed)
+        assertTrue(decision.reason.contains("past the end"))
+    }
+
     @Test fun waitingCheckpointCannotPointAtCompletedPlan() {
         val decision=PersistedSessionIntegrityPolicy.evaluate(session(currentStep=1,totalSteps=1))
         assertFalse(decision.allowed)
