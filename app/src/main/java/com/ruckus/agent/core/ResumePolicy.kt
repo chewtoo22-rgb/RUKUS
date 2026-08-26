@@ -14,7 +14,11 @@ data class ResumeDecision(
  * reconcile the observed outcome before deciding whether a replay is safe.
  */
 object ResumePolicy {
-    fun decide(session: PersistedTaskSession?, plan: CommandPlanner.Plan): ResumeDecision {
+    fun decide(
+        session: PersistedTaskSession?,
+        plan: CommandPlanner.Plan,
+        nowMs: Long = System.currentTimeMillis()
+    ): ResumeDecision {
         if (session == null) return ResumeDecision(false, reason = "No saved task session")
         if (session.request.isBlank()) return ResumeDecision(false, reason = "Saved task has no request")
         if (plan.actions.isEmpty() || plan.rejectedParts.isNotEmpty()) return ResumeDecision(false, reason = "Saved request no longer produces a valid plan")
@@ -28,6 +32,15 @@ object ResumePolicy {
         if (session.status == AgentTaskState.Status.COMPLETE) return ResumeDecision(false, reason = "Task is already complete")
         if (session.status == AgentTaskState.Status.FAILED) return ResumeDecision(false, reason = "Failed tasks require a fresh user request")
         if (session.status == AgentTaskState.Status.IDLE) return ResumeDecision(false, reason = "No active task to resume")
+
+        val resumeLease = SessionResumeLeasePolicy.evaluate(
+            savedAtMs = session.savedAtMs,
+            status = session.status,
+            nowMs = nowMs
+        )
+        if (!resumeLease.allowed) {
+            return ResumeDecision(false, reason = resumeLease.reason)
+        }
 
         if (session.currentStep < 0 || session.currentStep > plan.actions.size) {
             return ResumeDecision(false, reason = "Saved checkpoint step is outside the exact saved plan")
