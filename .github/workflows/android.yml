@@ -22,11 +22,38 @@ jobs:
         run: gradle :app:assembleDebug --stacktrace
       - name: Build instrumentation test APK
         run: gradle :app:assembleDebugAndroidTest --stacktrace
+      - name: Record exact APK provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/release-evidence
+          app_apk='app/build/outputs/apk/debug/app-debug.apk'
+          test_apk='app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk'
+          test -s "$app_apk"
+          test -s "$test_apk"
+          sha256sum "$app_apk" "$test_apk" > build/release-evidence/SHA256SUMS
+          {
+            echo "repository=${GITHUB_REPOSITORY}"
+            echo "commit=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "app_apk=$app_apk"
+            echo "instrumentation_apk=$test_apk"
+          } > build/release-evidence/build-provenance.txt
+          cat build/release-evidence/build-provenance.txt
+          cat build/release-evidence/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: RUKUS-executor-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            build/release-evidence/SHA256SUMS
+            build/release-evidence/build-provenance.txt
       - uses: actions/upload-artifact@v4
         with:
           name: RUKUS-device-smoke-test
-          path: app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          path: |
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            build/release-evidence/SHA256SUMS
+            build/release-evidence/build-provenance.txt
