@@ -14,6 +14,12 @@ class DeviceReadyExecutor(context: Context) {
 
     fun lastSession(): PersistedTaskSession? = delegate.lastSession()
 
+    /**
+     * Reusable readiness snapshot for onboarding, settings, diagnostics and hands-on
+     * device validation. This does not replace action-specific whole-plan preflight.
+     */
+    fun capabilities(): DeviceCapabilitySnapshot = DeviceCapabilityReader.read(appContext)
+
     fun run(request: String, approved: Boolean = false): ExecutionReport {
         val plan = CommandPlanner.plan(request)
         if (plan.actions.isEmpty() || plan.rejectedParts.isNotEmpty()) {
