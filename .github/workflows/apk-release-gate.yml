@@ -1,0 +1,60 @@
+name: RUKUS APK Release Gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  release-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Unit tests
+        shell: bash
+        run: |
+          set +e
+          gradle :app:testDebugUnitTest --stacktrace 2>&1 | tee gradle-unit-test.log
+          status=${PIPESTATUS[0]}
+          if [[ $status -ne 0 ]]; then
+            {
+              echo '## Unit-test failure tail'
+              echo '```text'
+              tail -n 140 gradle-unit-test.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit "$status"
+          fi
+
+      - name: Upload unit-test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-unit-test-diagnostics
+          if-no-files-found: error
+          path: gradle-unit-test.log
+
+      - name: Assemble release variant
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Verify release APK structure
+        run: bash qa/verify-apk-release.sh app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Record SHA-256
+        run: sha256sum app/build/outputs/apk/release/app-release-unsigned.apk | tee app/build/outputs/apk/release/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RUKUS-release-unsigned
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/release/app-release-unsigned.apk
+            app/build/outputs/apk/release/SHA256SUMS.txt
