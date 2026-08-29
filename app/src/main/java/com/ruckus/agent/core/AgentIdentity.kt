@@ -2,7 +2,12 @@ package com.ruckus.agent.core
 
 enum class AgentIdentity {
     RUKUS,
-    MUTINY
+    NITRO,
+    /** Legacy identity retained only while persisted/stacked MUTINY work migrates. */
+    @Deprecated("Use NITRO")
+    MUTINY;
+
+    fun canonical(): AgentIdentity = if (this == MUTINY) NITRO else this
 }
 
 data class AgentSession(
