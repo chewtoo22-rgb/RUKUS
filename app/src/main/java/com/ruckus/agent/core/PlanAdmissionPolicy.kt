@@ -58,7 +58,9 @@ object PlanAdmissionPolicy {
             action.args.size > MAX_SHELL_ARGS -> "approved shell command has too many arguments"
             action.args.any { (key, value) -> key.isBlank() || key.length > MAX_TEXT_LENGTH || value.length > MAX_TEXT_LENGTH } ->
                 "approved shell command contains an invalid argument"
-            else -> null
+            else -> ApprovedShellCommandPolicy.evaluate(action.commandId, action.args)
+                .takeIf { !it.allowed }
+                ?.reason
         }
         else -> null
     }
