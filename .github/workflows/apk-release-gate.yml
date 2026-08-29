@@ -34,6 +34,14 @@ jobs:
             exit "$status"
           fi
 
+      - name: Upload unit-test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-unit-test-diagnostics
+          if-no-files-found: error
+          path: gradle-unit-test.log
+
       - name: Assemble release variant
         run: gradle :app:assembleRelease --stacktrace
 
