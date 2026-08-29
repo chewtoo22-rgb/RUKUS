@@ -18,13 +18,15 @@ class SharedPreferencesRukusSettingsStore(context: Context) : RukusSettingsStore
     )
 
     override fun save(settings: RukusSettings) {
-        prefs.edit()
+        val committed = prefs.edit()
             .putBoolean(KEY_ONBOARDING_COMPLETE, settings.onboardingComplete)
             .putBoolean(KEY_HAPTICS_ENABLED, settings.hapticsEnabled)
             .putBoolean(KEY_TELEMETRY_ENABLED, settings.telemetryEnabled)
             .putBoolean(KEY_CONFIRMATIONS_ENABLED, settings.confirmationsEnabled)
             .putInt(KEY_TUTORIAL_VERSION_SEEN, settings.tutorialVersionSeen)
-            .apply()
+            .commit()
+
+        check(committed) { "Failed to persist RUKUS settings" }
     }
 
     companion object {
