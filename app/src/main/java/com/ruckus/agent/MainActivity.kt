@@ -31,6 +31,7 @@ import com.ruckus.agent.core.AgentTaskState
 import com.ruckus.agent.core.CompletedTaskEvidencePolicy
 import com.ruckus.agent.core.DeviceReadyExecutor
 import com.ruckus.agent.core.ExecutionReport
+import com.ruckus.agent.core.PersistedTaskSession
 import com.ruckus.agent.personality.RuckusPersona
 import com.ruckus.agent.ui.SystemTelemetry
 import com.ruckus.agent.ui.SystemTelemetryReader
@@ -271,7 +272,7 @@ private fun QuickAction(label: String, action: () -> Unit) {
 }
 
 @Composable
-private fun ExecutionCard(result: String, session: AgentTaskState?) {
+private fun ExecutionCard(result: String, session: PersistedTaskSession?) {
     val statusColor = when (session?.status) {
         AgentTaskState.Status.COMPLETE -> Success
         AgentTaskState.Status.FAILED -> Danger
