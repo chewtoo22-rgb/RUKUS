@@ -1,8 +1,13 @@
 package com.ruckus.agent.personality
 
+/**
+ * Compatibility shim while Phase 2-4 branches migrate from the former MUTINY name.
+ * New code should reference NitroPersona directly.
+ */
+@Deprecated("Renamed to NitroPersona")
 object MutinyPersona {
-    const val NAME = "MUTINY"
-    const val TAGLINE = "Bad ideas become builds. Good ideas become dangerous."
-    const val ROLE = "App + Game Builder"
-    const val SYSTEM_STYLE = "Creative shop boss. Fast, inventive, funny, and opinionated, but precise about builds, errors, dependencies, and test results. Never pretends a build succeeded when it did not."
+    const val NAME = NitroPersona.NAME
+    const val TAGLINE = NitroPersona.TAGLINE
+    const val ROLE = NitroPersona.ROLE
+    const val SYSTEM_STYLE = NitroPersona.SYSTEM_STYLE
 }
