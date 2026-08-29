@@ -1,8 +1,7 @@
 package com.ruckus.agent.core
 
 import android.content.Context
-import android.provider.Settings
-import com.ruckus.agent.control.RuckusAccessibilityService
+import com.ruckus.agent.control.RuntimeCapabilityReader
 
 /**
  * App-facing executor facade that fails closed before any side effect when the
@@ -33,12 +32,19 @@ class DeviceReadyExecutor(context: Context) {
     }
 
     private fun preflight(actions: List<AgentAction>, startStep: Int): ExecutionReport? {
+        // The bounded Shizuku shell adapter is intentionally not enabled yet. The
+        // shared capability contract will begin reporting it ready only after the
+        // adapter itself exists and explicitly opts in.
+        val capabilities = RuntimeCapabilityReader.read(
+            context = appContext,
+            approvedShellAdapterEnabled = false
+        )
         val decision = DeviceReadinessPreflight.evaluate(
             actions = actions,
             startStep = startStep,
-            accessibilityReady = RuckusAccessibilityService.instance != null,
-            writeSettingsReady = Settings.System.canWrite(appContext),
-            approvedShellReady = false, // DeviceController's bounded Shizuku adapter is not implemented yet.
+            accessibilityReady = capabilities.accessibilityReady,
+            writeSettingsReady = capabilities.writeSettingsReady,
+            approvedShellReady = capabilities.approvedShellReady,
             launchTargetReady = ::isLaunchTargetReady
         )
         if (decision.allowed) return null
