@@ -2,8 +2,12 @@
     xmlns:tools="http://schemas.android.com/tools">
     <application>
         <!-- Compose preview tooling is useful in debug builds but must never be exported in release APKs. -->
+        <!-- This is a manifest-merger removal rule, not a runtime class reference. Release lint therefore
+             ignores MissingClass for this removal-only declaration while the packaged-manifest gate still
+             proves PreviewActivity is absent from the final APK. -->
         <activity
             android:name="androidx.compose.ui.tooling.PreviewActivity"
-            tools:node="remove" />
+            tools:node="remove"
+            tools:ignore="MissingClass" />
     </application>
 </manifest>
