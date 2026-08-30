@@ -10,6 +10,7 @@ object ActionAudit {
     fun record(request: String, action: AgentAction?, outcome: String) {
         records.addFirst(ActionRecord(System.currentTimeMillis(), request, action?.toString() ?: "NONE", outcome))
         while (records.size > MAX) records.pollLast()
+        ExecutionHealthTelemetry.record(outcome)
     }
     fun recent(limit: Int = 20): List<ActionRecord> = records.take(limit.coerceIn(1, MAX))
 }
