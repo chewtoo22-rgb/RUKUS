@@ -16,6 +16,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Validate device smoke runner
+        run: bash -n qa/run-device-smoke.sh
       - name: Unit tests
         run: gradle :app:testDebugUnitTest --stacktrace
       - name: Build APK
@@ -40,6 +42,7 @@ jobs:
             echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
             echo "app_apk=$app_apk"
             echo "instrumentation_apk=$test_apk"
+            echo "device_smoke_runner=qa/run-device-smoke.sh"
           } > build/release-evidence/build-provenance.txt
           cat build/release-evidence/build-provenance.txt
           cat build/release-evidence/SHA256SUMS
@@ -55,5 +58,6 @@ jobs:
           name: RUKUS-device-smoke-test
           path: |
             app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            qa/run-device-smoke.sh
             build/release-evidence/SHA256SUMS
             build/release-evidence/build-provenance.txt
