@@ -11,6 +11,7 @@ ACCESSIBILITY_SERVICE = f"{APP_ID}.control.RuckusAccessibilityService"
 MAIN_ACTIVITY = f"{APP_ID}.MainActivity"
 SHIZUKU_PROVIDER = "rikka.shizuku.ShizukuProvider"
 RESOURCE_ID = re.compile(r"^@(?:0x)?[0-9a-fA-F]+$")
+ACCESSIBILITY_RESOURCE = re.compile(r"^@(?:(?:com\.ruckus\.agent):)?xml/ruckus_accessibility_service$")
 def attr(node, name): return node.get(ANDROID + name)
 def canonical_component(name):
     if not name: return name
@@ -31,7 +32,9 @@ def has_launcher_filter(node):
         if "android.intent.action.MAIN" in actions and "android.intent.category.LAUNCHER" in categories: return True
     return False
 def valid_accessibility_resource(value):
-    return value == "@xml/ruckus_accessibility_service" or bool(value and RESOURCE_ID.fullmatch(value))
+    if not value:
+        return False
+    return bool(ACCESSIBILITY_RESOURCE.fullmatch(value) or RESOURCE_ID.fullmatch(value))
 def validate_manifest(xml_text):
     try: root=ET.fromstring(xml_text)
     except ET.ParseError as exc: raise ValueError(f"manifest XML is malformed: {exc}") from exc
@@ -45,7 +48,8 @@ def validate_manifest(xml_text):
     require(has_intent_action(service,"android.accessibilityservice.AccessibilityService"),"accessibility service intent action missing")
     metadata=[n for n in service.findall("meta-data") if attr(n,"name")=="android.accessibilityservice"]
     require(len(metadata)==1,"accessibility service metadata must appear exactly once")
-    require(valid_accessibility_resource(attr(metadata[0],"resource")),"accessibility service metadata must reference its packaged XML resource")
+    resource=attr(metadata[0],"resource")
+    require(valid_accessibility_resource(resource),f"accessibility service metadata must reference its packaged XML resource, got {resource!r}")
     activity=component_by_name(app,"activity",MAIN_ACTIVITY); require(attr(activity,"exported")=="true","MainActivity must be exported=true"); require(has_launcher_filter(activity),"MainActivity MAIN/LAUNCHER intent filter missing")
     provider=component_by_name(app,"provider",SHIZUKU_PROVIDER); require(attr(provider,"exported")=="true","ShizukuProvider must be exported=true"); require(attr(provider,"authorities")==f"{APP_ID}.shizuku","ShizukuProvider authority must be bound to the RUKUS applicationId"); require(attr(provider,"permission")=="android.permission.INTERACT_ACROSS_USERS_FULL","ShizukuProvider must retain INTERACT_ACROSS_USERS_FULL protection")
     exports=set()
