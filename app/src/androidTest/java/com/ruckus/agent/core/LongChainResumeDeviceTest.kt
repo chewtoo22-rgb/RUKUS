@@ -1,0 +1,147 @@
+package com.ruckus.agent.core
+
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/**
+ * Device/emulator probe for long-chain crash-safe resume near the admitted horizon.
+ *
+ * CI compiles this into the instrumentation APK. Execution remains a Thursday
+ * device/emulator test so no physical-runtime result is implied by compilation.
+ */
+@RunWith(AndroidJUnit4::class)
+class LongChainResumeDeviceTest {
+    private lateinit var context: Context
+    private lateinit var store: TaskSessionStore
+
+    @Before
+    fun setUp() {
+        context = ApplicationProvider.getApplicationContext()
+        store = TaskSessionStore(context)
+        store.clear()
+    }
+
+    @After
+    fun tearDown() {
+        store.clear()
+    }
+
+    @Test
+    fun nearMaximumChainResumesAtFirstUnverifiedStepWithRecoveryBudgetIntact() {
+        val request = "home then back then home then back then home then back then home then back"
+        val plan = CommandPlanner.plan(request)
+
+        assertEquals(PlanAdmissionPolicy.MAX_ACTIONS, plan.actions.size)
+        assertTrue(plan.rejectedParts.isEmpty())
+
+        // Model six verified actions in an eight-action task, including two recovery
+        // attempts already consumed before process death. The persisted checkpoint
+        // must resume at step seven without replaying the six verified actions or
+        // resetting the task-wide recovery budget.
+        val state = AgentTaskState(
+            request = request,
+            currentStep = 6,
+            totalSteps = plan.actions.size,
+            lastAction = plan.actions[5],
+            lastScreenSummary = "pkg=com.android.launcher | screen=Home | verifiedSteps=6",
+            recoveryAttempts = 2,
+            status = AgentTaskState.Status.RUNNING
+        )
+        val fingerprint = PlanFingerprint.of(plan)
+        store.save(state, planFingerprint = fingerprint)
+
+        val reloaded = TaskSessionStore(context).load()
+        assertNotNull(reloaded)
+        reloaded!!
+        assertEquals(fingerprint, reloaded.planFingerprint)
+        assertEquals(6, reloaded.currentStep)
+        assertEquals(2, reloaded.recoveryAttempts)
+        assertTrue(PersistedSessionDigest.matches(reloaded))
+
+        val decision = ResumePolicy.decide(reloaded, CommandPlanner.plan(reloaded.request))
+        assertTrue(decision.allowed)
+        assertEquals(6, decision.startStep)
+
+        val remainingBudget = RecoveryBudget.decide(reloaded.recoveryAttempts)
+        assertTrue(remainingBudget.allowed)
+        assertEquals(
+            "Recovery attempt 3/${RecoveryBudget.MAX_TOTAL_ATTEMPTS} allowed",
+            remainingBudget.reason
+        )
+    }
+
+    @Test
+    fun exhaustedRecoveryBudgetStaysExhaustedAcrossPersistenceAndResume() {
+        val request = "home then back then home then back"
+        val plan = CommandPlanner.plan(request)
+        assertTrue(plan.rejectedParts.isEmpty())
+
+        // Once the task-wide recovery budget is exhausted, process death must not
+        // create a fresh allowance. Resume may preserve the checkpoint evidence,
+        // but the next recovery admission remains denied until a fresh user goal.
+        val state = AgentTaskState(
+            request = request,
+            currentStep = 2,
+            totalSteps = plan.actions.size,
+            lastAction = plan.actions[1],
+            lastScreenSummary = "pkg=com.android.launcher | screen=Home | recoveryBudget=exhausted",
+            recoveryAttempts = RecoveryBudget.MAX_TOTAL_ATTEMPTS,
+            status = AgentTaskState.Status.RUNNING
+        )
+        val fingerprint = PlanFingerprint.of(plan)
+        store.save(state, planFingerprint = fingerprint)
+
+        val reloaded = TaskSessionStore(context).load()
+        assertNotNull(reloaded)
+        reloaded!!
+        assertEquals(RecoveryBudget.MAX_TOTAL_ATTEMPTS, reloaded.recoveryAttempts)
+        assertEquals(fingerprint, reloaded.planFingerprint)
+        assertTrue(PersistedSessionDigest.matches(reloaded))
+
+        val resume = ResumePolicy.decide(reloaded, CommandPlanner.plan(reloaded.request))
+        assertTrue(resume.allowed)
+        assertEquals(2, resume.startStep)
+
+        val exhausted = RecoveryBudget.decide(reloaded.recoveryAttempts)
+        assertFalse(exhausted.allowed)
+        assertEquals(
+            "Recovery budget exhausted (${RecoveryBudget.MAX_TOTAL_ATTEMPTS}/${RecoveryBudget.MAX_TOTAL_ATTEMPTS})",
+            exhausted.reason
+        )
+    }
+
+    @Test
+    fun malformedCheckpointOutsidePlanFailsClosedInsteadOfBeingClamped() {
+        val request = "home then back then home then back"
+        val plan = CommandPlanner.plan(request)
+        assertTrue(plan.rejectedParts.isEmpty())
+
+        val malformed = PersistedTaskSession(
+            request = request,
+            currentStep = plan.actions.size + 1,
+            totalSteps = plan.actions.size,
+            lastAction = plan.actions.last().toString(),
+            lastScreenSummary = "pkg=com.android.launcher | screen=Home | impossibleCheckpoint=true",
+            recoveryAttempts = 0,
+            status = AgentTaskState.Status.RUNNING,
+            savedAtMs = System.currentTimeMillis(),
+            planFingerprint = PlanFingerprint.of(plan),
+            schemaVersion = PERSISTED_SESSION_SCHEMA_VERSION,
+            completionEvidenceDigest = null,
+            checkpointDigest = null
+        )
+
+        val decision = ResumePolicy.decide(malformed, plan)
+        assertFalse(decision.allowed)
+        assertEquals("Saved checkpoint step is outside the exact saved plan", decision.reason)
+    }
+}
