@@ -44,6 +44,8 @@ jobs:
           set -euo pipefail
           test -f app/src/main/java/com/ruckus/agent/builder/BuildExecutor.kt
           test -f app/src/test/java/com/ruckus/agent/builder/BuildExecutorReliabilityTest.kt
+          test -f gradle.properties
+          grep -Fxq 'android.useAndroidX=true' gradle.properties
           grep -Fq ':app:assembleDebug' app/src/main/java/com/ruckus/agent/builder/BuildExecutor.kt
           grep -Fq -- '--no-daemon' app/src/main/java/com/ruckus/agent/builder/BuildExecutor.kt
           grep -Fq 'destroyForcibly' app/src/main/java/com/ruckus/agent/builder/BuildExecutor.kt
