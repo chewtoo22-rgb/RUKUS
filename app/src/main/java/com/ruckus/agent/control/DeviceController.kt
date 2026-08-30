@@ -9,6 +9,7 @@ import com.ruckus.agent.core.AgentAction
 import com.ruckus.agent.core.AppLaunchMatchPolicy
 import com.ruckus.agent.core.InstalledAppLaunchResolver
 import com.ruckus.agent.core.ObservedLaunchInventoryPolicy
+import com.ruckus.agent.core.SystemNavigationResult
 
 class DeviceController(private val context: Context) {
     fun execute(action: AgentAction): Result<String> = runCatching {
@@ -28,8 +29,20 @@ class DeviceController(private val context: Context) {
                 context.startActivity(launch)
                 "Opened ${match.label} package=${match.packageName}"
             }
-            AgentAction.Back -> { checkNotNull(RuckusAccessibilityService.instance).performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK); "Back" }
-            AgentAction.Home -> { checkNotNull(RuckusAccessibilityService.instance).performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME); "Home" }
+            AgentAction.Back -> {
+                val service = checkNotNull(RuckusAccessibilityService.instance) { "Accessibility service offline" }
+                SystemNavigationResult.requirePerformed(
+                    actionName = "Back",
+                    performed = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                )
+            }
+            AgentAction.Home -> {
+                val service = checkNotNull(RuckusAccessibilityService.instance) { "Accessibility service offline" }
+                SystemNavigationResult.requirePerformed(
+                    actionName = "Home",
+                    performed = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+                )
+            }
             is AgentAction.Tap -> { check(RuckusAccessibilityService.instance?.tap(action.x, action.y) == true); "Tapped ${action.x},${action.y}" }
             is AgentAction.TapLabel -> { check(RuckusAccessibilityService.instance?.clickLabel(action.label) == true) { "Visible label not found/clickable/enabled: ${action.label}" }; "Tapped ${action.label}" }
             is AgentAction.Swipe -> { check(RuckusAccessibilityService.instance?.swipe(action.x1, action.y1, action.x2, action.y2, action.durationMs) == true); "Swiped" }
