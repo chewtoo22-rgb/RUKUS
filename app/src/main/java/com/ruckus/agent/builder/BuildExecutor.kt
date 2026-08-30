@@ -57,12 +57,7 @@ class BuildExecutor(
         }
 
         if (!finished) {
-            process.destroyForcibly()
-            try {
-                process.waitFor(2, TimeUnit.SECONDS)
-            } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
-            }
+            terminateProcessTree(process)
             reader.join(2_000)
             return job.copy(
                 state = BuildJobState.FAILED,
@@ -77,6 +72,21 @@ class BuildExecutor(
             job.copy(state = BuildJobState.SUCCEEDED, apkPath = apk.absolutePath, log = job.log + captured)
         } else {
             job.copy(state = BuildJobState.FAILED, log = job.log + captured)
+        }
+    }
+
+    private fun terminateProcessTree(process: Process) {
+        // Gradle wrappers normally exec a JVM, but custom/generated wrappers can spawn children.
+        // Kill descendants first so they cannot inherit stdout and keep the log reader alive.
+        val descendants = process.toHandle().descendants().toList().asReversed()
+        descendants.forEach { handle ->
+            if (handle.isAlive) handle.destroyForcibly()
+        }
+        if (process.isAlive) process.destroyForcibly()
+        try {
+            process.waitFor(2, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
         }
     }
 }
