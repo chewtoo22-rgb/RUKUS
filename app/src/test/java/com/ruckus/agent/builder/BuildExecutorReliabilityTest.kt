@@ -17,16 +17,15 @@ class BuildExecutorReliabilityTest {
     }
 
     @Test
-    fun hungGradleWrapperIsActuallyTimedOut() {
+    fun hungGradleWrapperAndChildAreActuallyTimedOut() {
         assumeFalse(System.getProperty("os.name").lowercase().contains("windows"))
 
         val root = Files.createTempDirectory("rukus-builder-timeout").toFile()
         try {
             val wrapper = root.resolve("gradlew")
-            // Real Gradle wrappers exec the JVM so the wrapper process is the build process.
-            // Model that boundary here instead of spawning a detached child that can outlive
-            // the shell and keep inherited stdout open after the wrapper itself is killed.
-            wrapper.writeText("#!/bin/sh\necho before-hang\nexec sleep 30\n")
+            // Exercise the harder process-tree case: a generated/custom wrapper may spawn a
+            // child that inherits stdout. Timeout teardown must kill both and return promptly.
+            wrapper.writeText("#!/bin/sh\necho before-hang\nsleep 30 &\nwait\n")
             assertTrue(wrapper.setExecutable(true))
 
             val job = BuildJob(
@@ -43,7 +42,7 @@ class BuildExecutorReliabilityTest {
             assertEquals(BuildJobState.FAILED, result.state)
             assertTrue(result.log.contains("before-hang"))
             assertTrue(result.log.contains("Build timed out"))
-            assertTrue("timeout should finish well before child sleep", elapsedMillis < 5_000)
+            assertTrue("timeout should terminate the wrapper process tree promptly", elapsedMillis < 5_000)
         } finally {
             root.deleteRecursively()
         }
