@@ -17,13 +17,15 @@ class BuildExecutorReliabilityTest {
     }
 
     @Test
-    fun hungGradleWrapperIsActuallyTimedOut() {
+    fun hungGradleWrapperReturnsPromptlyWhenChildKeepsStdoutOpen() {
         assumeFalse(System.getProperty("os.name").lowercase().contains("windows"))
 
         val root = Files.createTempDirectory("rukus-builder-timeout").toFile()
         try {
             val wrapper = root.resolve("gradlew")
-            wrapper.writeText("#!/bin/sh\necho before-hang\nsleep 30\n")
+            // A custom wrapper can leave a child holding the inherited stdout pipe. RUKUS must
+            // still return after the admitted wrapper times out instead of blocking on EOF.
+            wrapper.writeText("#!/bin/sh\necho before-hang\nsleep 30 &\nwait\n")
             assertTrue(wrapper.setExecutable(true))
 
             val job = BuildJob(
@@ -40,7 +42,7 @@ class BuildExecutorReliabilityTest {
             assertEquals(BuildJobState.FAILED, result.state)
             assertTrue(result.log.contains("before-hang"))
             assertTrue(result.log.contains("Build timed out"))
-            assertTrue("timeout should finish well before child sleep", elapsedMillis < 5_000)
+            assertTrue("timeout should close inherited output promptly", elapsedMillis < 5_000)
         } finally {
             root.deleteRecursively()
         }

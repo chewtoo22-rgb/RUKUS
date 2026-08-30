@@ -57,12 +57,7 @@ class BuildExecutor(
         }
 
         if (!finished) {
-            process.destroyForcibly()
-            try {
-                process.waitFor(2, TimeUnit.SECONDS)
-            } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
-            }
+            terminateProcess(process)
             reader.join(2_000)
             return job.copy(
                 state = BuildJobState.FAILED,
@@ -78,6 +73,21 @@ class BuildExecutor(
         } else {
             job.copy(state = BuildJobState.FAILED, log = job.log + captured)
         }
+    }
+
+    private fun terminateProcess(process: Process) {
+        // Keep this Android-compatible: ProcessHandle/toHandle are desktop-JDK APIs and cannot
+        // be referenced from app code. Force-stop the admitted wrapper, then close our pipe ends
+        // so a spawned child that inherited stdout cannot keep the log-drain thread blocked.
+        if (process.isAlive) process.destroyForcibly()
+        try {
+            process.waitFor(2, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+        runCatching { process.inputStream.close() }
+        runCatching { process.errorStream.close() }
+        runCatching { process.outputStream.close() }
     }
 }
 

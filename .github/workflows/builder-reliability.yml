@@ -1,0 +1,65 @@
+name: NITRO Builder Reliability
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/ruckus/agent/builder/**'
+      - 'app/src/test/java/com/ruckus/agent/builder/**'
+      - 'app/build.gradle.kts'
+      - 'build.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - 'gradlew'
+      - '.github/workflows/builder-reliability.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nitro-builder-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  builder-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up pinned Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Require bounded builder contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f app/src/main/java/com/ruckus/agent/builder/BuildExecutor.kt
+          test -f app/src/test/java/com/ruckus/agent/builder/BuildExecutorReliabilityTest.kt
+          test -f gradle.properties
+          grep -Fxq 'android.useAndroidX=true' gradle.properties
+          grep -Fq ':app:assembleDebug' app/src/main/java/com/ruckus/agent/builder/BuildExecutor.kt
+          grep -Fq -- '--no-daemon' app/src/main/java/com/ruckus/agent/builder/BuildExecutor.kt
+          grep -Fq 'destroyForcibly' app/src/main/java/com/ruckus/agent/builder/BuildExecutor.kt
+          test "$(gradle --version | awk '/^Gradle / {print $2}')" = "8.9"
+
+      - name: Run JVM builder reliability tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon testDebugUnitTest --tests 'com.ruckus.agent.builder.BuildExecutorReliabilityTest'
+
+      - name: Prove Android debug integration still packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon assembleDebug
+          test -s app/build/outputs/apk/debug/app-debug.apk
