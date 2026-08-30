@@ -26,6 +26,23 @@ class RukusSettingsController(
         it.copy(confirmationsEnabled = enabled)
     }
 
+    /**
+     * Completes onboarding only after the release-critical readiness contract passes.
+     * Optional capabilities remain visible in the returned plan but do not strand unsupported
+     * devices; individual commands still fail closed when those capabilities are required.
+     */
+    fun completeOnboardingIfReady(
+        readiness: OnboardingReadiness,
+        introSeen: Boolean = true
+    ): OnboardingPlan {
+        val plan = OnboardingReadinessPolicy.evaluate(readiness, introSeen)
+        if (plan.canComplete) {
+            update { it.completeOnboarding(currentTutorialVersion) }
+        }
+        return plan
+    }
+
+    /** Compatibility path for callers that already enforce readiness externally. */
     fun completeOnboarding(): RukusSettings = update {
         it.completeOnboarding(currentTutorialVersion)
     }

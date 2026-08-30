@@ -24,6 +24,69 @@ class RukusSettingsControllerTest {
     }
 
     @Test
+    fun readinessGateRefusesPersistenceWithoutAccessibility() {
+        val store = FakeStore()
+        val controller = RukusSettingsController(store, currentTutorialVersion = 2)
+
+        val plan = controller.completeOnboardingIfReady(
+            OnboardingReadiness(
+                accessibilityReady = false,
+                writeSettingsReady = true,
+                shizukuReady = true,
+                safetyAcknowledged = true
+            )
+        )
+
+        assertFalse(plan.canComplete)
+        assertEquals(OnboardingStep.ACCESSIBILITY, plan.currentStep)
+        assertTrue(controller.needsOnboarding())
+        assertFalse(store.persisted.onboardingComplete)
+        assertEquals(0, store.saveCount)
+    }
+
+    @Test
+    fun readinessGateRefusesPersistenceWithoutSafetyAcknowledgement() {
+        val store = FakeStore()
+        val controller = RukusSettingsController(store)
+
+        val plan = controller.completeOnboardingIfReady(
+            OnboardingReadiness(
+                accessibilityReady = true,
+                writeSettingsReady = true,
+                shizukuReady = true,
+                safetyAcknowledged = false
+            )
+        )
+
+        assertFalse(plan.canComplete)
+        assertEquals(OnboardingStep.SAFETY, plan.currentStep)
+        assertTrue(controller.needsOnboarding())
+        assertEquals(0, store.saveCount)
+    }
+
+    @Test
+    fun optionalCapabilitiesDoNotStrandSupportedCoreCommands() {
+        val store = FakeStore()
+        val controller = RukusSettingsController(store, currentTutorialVersion = 4)
+
+        val plan = controller.completeOnboardingIfReady(
+            OnboardingReadiness(
+                accessibilityReady = true,
+                writeSettingsReady = false,
+                shizukuReady = false,
+                safetyAcknowledged = true
+            )
+        )
+
+        assertTrue(plan.canComplete)
+        assertEquals(listOf(OnboardingStep.WRITE_SETTINGS, OnboardingStep.SHIZUKU), plan.optionalSetup)
+        assertFalse(controller.needsOnboarding())
+        assertTrue(store.persisted.onboardingComplete)
+        assertEquals(4, store.persisted.tutorialVersionSeen)
+        assertEquals(1, store.saveCount)
+    }
+
+    @Test
     fun settingChangesPersistBeforeBecomingVisible() {
         val store = FakeStore()
         val controller = RukusSettingsController(store)
