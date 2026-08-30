@@ -44,6 +44,9 @@ class RuntimeManifestContractTest(unittest.TestCase):
     def test_compiled_accessibility_resource_id_passes(self):
         validate_manifest(BASE.replace('@xml/ruckus_accessibility_service', '@0x7f120001'))
 
+    def test_apkanalyzer_ref_resource_id_passes(self):
+        validate_manifest(BASE.replace('@xml/ruckus_accessibility_service', '@ref/0x7f0b0000'))
+
     def test_protected_profile_installer_receiver_passes(self):
         validate_manifest(self.with_profile_receiver())
 
