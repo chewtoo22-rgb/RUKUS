@@ -23,7 +23,10 @@ class BuildExecutorReliabilityTest {
         val root = Files.createTempDirectory("rukus-builder-timeout").toFile()
         try {
             val wrapper = root.resolve("gradlew")
-            wrapper.writeText("#!/bin/sh\necho before-hang\nsleep 30\n")
+            // Real Gradle wrappers exec the JVM so the wrapper process is the build process.
+            // Model that boundary here instead of spawning a detached child that can outlive
+            // the shell and keep inherited stdout open after the wrapper itself is killed.
+            wrapper.writeText("#!/bin/sh\necho before-hang\nexec sleep 30\n")
             assertTrue(wrapper.setExecutable(true))
 
             val job = BuildJob(
