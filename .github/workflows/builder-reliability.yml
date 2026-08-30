@@ -7,6 +7,7 @@ on:
       - 'app/src/main/java/com/ruckus/agent/builder/**'
       - 'app/src/test/java/com/ruckus/agent/builder/**'
       - 'app/build.gradle.kts'
+      - 'build.gradle.kts'
       - 'gradle.properties'
       - 'gradle/**'
       - 'gradlew'
@@ -32,8 +33,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
+      - name: Set up pinned Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
       - name: Require bounded builder contract
         shell: bash
@@ -44,17 +47,17 @@ jobs:
           grep -Fq ':app:assembleDebug' app/src/main/java/com/ruckus/agent/builder/BuildExecutor.kt
           grep -Fq -- '--no-daemon' app/src/main/java/com/ruckus/agent/builder/BuildExecutor.kt
           grep -Fq 'destroyForcibly' app/src/main/java/com/ruckus/agent/builder/BuildExecutor.kt
+          test "$(gradle --version | awk '/^Gradle / {print $2}')" = "8.9"
 
       - name: Run JVM builder reliability tests
         shell: bash
         run: |
           set -euo pipefail
-          chmod +x ./gradlew
-          ./gradlew --no-daemon testDebugUnitTest --tests 'com.ruckus.agent.builder.BuildExecutorReliabilityTest'
+          gradle --no-daemon testDebugUnitTest --tests 'com.ruckus.agent.builder.BuildExecutorReliabilityTest'
 
       - name: Prove Android debug integration still packages
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew --no-daemon assembleDebug
+          gradle --no-daemon assembleDebug
           test -s app/build/outputs/apk/debug/app-debug.apk
