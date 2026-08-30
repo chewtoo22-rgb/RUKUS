@@ -26,6 +26,25 @@ class RukusSettingsController(
         it.copy(confirmationsEnabled = enabled)
     }
 
+    /**
+     * Transactionally completes onboarding only when the release-critical readiness gates pass.
+     * Optional capabilities remain visible in the returned plan but do not prevent completion.
+     */
+    fun completeOnboardingIfReady(
+        readiness: OnboardingReadiness,
+        introSeen: Boolean = true
+    ): OnboardingPlan {
+        val plan = OnboardingReadinessPolicy.evaluate(readiness, introSeen)
+        if (plan.canComplete) {
+            update { it.completeOnboarding(currentTutorialVersion) }
+        }
+        return plan
+    }
+
+    /**
+     * Compatibility path for callers that already performed readiness validation externally.
+     * New first-run surfaces should use completeOnboardingIfReady().
+     */
     fun completeOnboarding(): RukusSettings = update {
         it.completeOnboarding(currentTutorialVersion)
     }
