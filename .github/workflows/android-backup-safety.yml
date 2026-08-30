@@ -62,7 +62,7 @@ jobs:
 
           print('Android device-control manifest safety contract: PASS')
           PY
-      - name: Run JVM tests
-        run: ./gradlew test --no-daemon
+      - name: Run app JVM tests
+        run: ./gradlew :app:test --no-daemon
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon
