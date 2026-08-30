@@ -16,11 +16,21 @@ BASE = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android" p
   </application>
 </manifest>'''
 
+PROFILE_RECEIVER = '''<receiver android:name="androidx.profileinstaller.ProfileInstallReceiver" android:permission="android.permission.DUMP" android:enabled="true" android:exported="true">
+  <intent-filter><action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" /></intent-filter>
+  <intent-filter><action android:name="androidx.profileinstaller.action.SKIP_FILE" /></intent-filter>
+  <intent-filter><action android:name="androidx.profileinstaller.action.SAVE_PROFILE" /></intent-filter>
+  <intent-filter><action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" /></intent-filter>
+</receiver>'''
+
 
 class RuntimeManifestContractTest(unittest.TestCase):
     def assertRejected(self, xml: str, fragment: str):
         with self.assertRaisesRegex(ValueError, fragment):
             validate_manifest(xml)
+
+    def with_profile_receiver(self, xml: str = BASE):
+        return xml.replace('</application>', PROFILE_RECEIVER + '</application>')
 
     def test_valid_manifest_passes(self):
         validate_manifest(BASE)
@@ -33,6 +43,23 @@ class RuntimeManifestContractTest(unittest.TestCase):
 
     def test_compiled_accessibility_resource_id_passes(self):
         validate_manifest(BASE.replace('@xml/ruckus_accessibility_service', '@0x7f120001'))
+
+    def test_protected_profile_installer_receiver_passes(self):
+        validate_manifest(self.with_profile_receiver())
+
+    def test_profile_installer_receiver_must_keep_dump_permission(self):
+        manifest = self.with_profile_receiver().replace(
+            'android:permission="android.permission.DUMP"',
+            'android:permission="android.permission.INTERNET"',
+        )
+        self.assertRejected(manifest, "must remain protected by android.permission.DUMP")
+
+    def test_profile_installer_receiver_actions_cannot_drift(self):
+        manifest = self.with_profile_receiver().replace(
+            '<intent-filter><action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" /></intent-filter>',
+            '',
+        )
+        self.assertRejected(manifest, "intent actions changed unexpectedly")
 
     def test_accessibility_service_cannot_be_exported(self):
         self.assertRejected(BASE.replace('android:exported="false"', 'android:exported="true"', 1), "accessibility service must be exported=false")
@@ -51,6 +78,10 @@ class RuntimeManifestContractTest(unittest.TestCase):
 
     def test_unexpected_exported_component_fails_closed(self):
         extra = '<receiver android:name="com.ruckus.agent.LeakyReceiver" android:exported="true" />'
+        self.assertRejected(BASE.replace('</application>', extra + '</application>'), "unexpected exported component set")
+
+    def test_compose_preview_activity_must_not_ship_exported(self):
+        extra = '<activity android:name="androidx.compose.ui.tooling.PreviewActivity" android:exported="true" />'
         self.assertRejected(BASE.replace('</application>', extra + '</application>'), "unexpected exported component set")
 
     def test_duplicate_privileged_service_fails_closed(self):
