@@ -25,6 +25,15 @@ class RuntimeManifestContractTest(unittest.TestCase):
     def test_valid_manifest_passes(self):
         validate_manifest(BASE)
 
+    def test_packaged_qualified_accessibility_resource_passes(self):
+        validate_manifest(BASE.replace(
+            '@xml/ruckus_accessibility_service',
+            '@com.ruckus.agent:xml/ruckus_accessibility_service',
+        ))
+
+    def test_compiled_accessibility_resource_id_passes(self):
+        validate_manifest(BASE.replace('@xml/ruckus_accessibility_service', '@0x7f120001'))
+
     def test_accessibility_service_cannot_be_exported(self):
         self.assertRejected(BASE.replace('android:exported="false"', 'android:exported="true"', 1), "accessibility service must be exported=false")
 
