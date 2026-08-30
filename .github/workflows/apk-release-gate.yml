@@ -18,6 +18,9 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Runtime manifest contract tests
+        run: python3 qa/test_verify_runtime_manifest.py
+
       - name: Unit tests
         shell: bash
         run: |
@@ -45,7 +48,7 @@ jobs:
       - name: Assemble release variant
         run: gradle :app:assembleRelease --stacktrace
 
-      - name: Verify release APK structure
+      - name: Verify release APK structure and runtime wiring
         run: bash qa/verify-apk-release.sh app/build/outputs/apk/release/app-release-unsigned.apk
 
       - name: Record SHA-256
