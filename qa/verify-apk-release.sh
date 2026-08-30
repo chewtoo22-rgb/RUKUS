@@ -32,7 +32,6 @@ MIN_SDK="$($APKAnalyzer manifest min-sdk "$APK")"
 TARGET_SDK="$($APKAnalyzer manifest target-sdk "$APK")"
 DEBUGGABLE="$($APKAnalyzer manifest debuggable "$APK")"
 PERMISSIONS="$($APKAnalyzer manifest permissions "$APK")"
-MANIFEST="$($APKAnalyzer manifest print "$APK")"
 FILES="$($APKAnalyzer files list "$APK")"
 
 expect_eq "applicationId" "$APP_ID" "com.ruckus.agent"
@@ -43,12 +42,14 @@ expect_eq "debuggable" "$DEBUGGABLE" "false"
 [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || fail "versionCode must be a positive integer"
 grep -Fq 'android.permission.WRITE_SETTINGS' <<<"$PERMISSIONS" || fail "WRITE_SETTINGS permission missing"
 grep -Fq 'android.permission.POST_NOTIFICATIONS' <<<"$PERMISSIONS" || fail "POST_NOTIFICATIONS permission missing"
-grep -Fq 'com.ruckus.agent.control.RuckusAccessibilityService' <<<"$MANIFEST" || fail "RUKUS accessibility service missing"
-grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' <<<"$MANIFEST" || fail "accessibility service binding permission missing"
-grep -Fq 'android:exported="false"' <<<"$MANIFEST" || fail "expected a non-exported privileged component"
 grep -Fq 'classes.dex' <<<"$FILES" || fail "classes.dex missing"
 
-if grep -Fq 'android:testOnly="true"' <<<"$MANIFEST"; then
+MANIFEST_FILE="$(mktemp)"
+trap 'rm -f "$MANIFEST_FILE"' EXIT
+"$APKAnalyzer" manifest print "$APK" > "$MANIFEST_FILE"
+python3 qa/verify_runtime_manifest.py "$MANIFEST_FILE"
+
+if grep -Fq 'android:testOnly="true"' "$MANIFEST_FILE"; then
   fail "release APK must not be testOnly"
 fi
 
