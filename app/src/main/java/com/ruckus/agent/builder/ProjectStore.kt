@@ -4,7 +4,18 @@ import android.content.Context
 import java.util.UUID
 
 class ProjectStore(context: Context) {
-    private val prefs = context.getSharedPreferences("mutiny_projects", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(
+        ProjectStoreMigration.CURRENT_NAMESPACE,
+        Context.MODE_PRIVATE
+    )
+    private val legacyPrefs = context.getSharedPreferences(
+        ProjectStoreMigration.LEGACY_NAMESPACE,
+        Context.MODE_PRIVATE
+    )
+
+    init {
+        migrateLegacyProjects()
+    }
 
     fun create(spec: ProjectSpec): ProjectRecord {
         val now = System.currentTimeMillis()
@@ -27,6 +38,34 @@ class ProjectStore(context: Context) {
     fun all(): List<ProjectRecord> = prefs.all.values
         .mapNotNull { (it as? String)?.let(::decode) }
         .sortedByDescending { it.updatedAtEpochMs }
+
+    private fun migrateLegacyProjects() {
+        val planned = ProjectStoreMigration.planCopy(
+            legacyEntries = legacyPrefs.all,
+            currentKeys = prefs.all.keys
+        )
+        if (planned.isEmpty()) {
+            if (legacyPrefs.all.isEmpty()) return
+            clearLegacyOnlyWhenRepresented()
+            return
+        }
+
+        val editor = prefs.edit()
+        planned.forEach { (id, raw) -> editor.putString(id, raw) }
+        if (!editor.commit()) return
+
+        clearLegacyOnlyWhenRepresented()
+    }
+
+    private fun clearLegacyOnlyWhenRepresented() {
+        val legacyStringEntries = legacyPrefs.all.mapNotNull { (id, value) ->
+            (value as? String)?.let { id to it }
+        }
+        val allRepresented = legacyStringEntries.all { (id, _) -> prefs.contains(id) }
+        if (allRepresented) {
+            legacyPrefs.edit().clear().commit()
+        }
+    }
 
     private fun encode(record: ProjectRecord): String = listOf(
         record.id,
