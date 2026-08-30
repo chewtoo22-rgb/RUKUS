@@ -19,7 +19,7 @@ PROFILE_INSTALL_ACTIONS = {
     "androidx.profileinstaller.action.SAVE_PROFILE",
     "androidx.profileinstaller.action.BENCHMARK_OPERATION",
 }
-RESOURCE_ID = re.compile(r"^@(?:0x)?[0-9a-fA-F]+$")
+RESOURCE_ID = re.compile(r"^@(?:ref/)?(?:0x)?[0-9a-fA-F]+$")
 ACCESSIBILITY_RESOURCE = re.compile(
     r"^@(?:(?:com\.ruckus\.agent):)?xml/ruckus_accessibility_service$"
 )
