@@ -1,0 +1,60 @@
+name: NITRO Active Agent State
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/ruckus/agent/core/AgentIdentity.kt'
+      - 'app/src/main/java/com/ruckus/agent/core/ActiveAgentState.kt'
+      - 'app/src/test/java/com/ruckus/agent/core/ActiveAgentStateTest.kt'
+      - 'app/build.gradle.kts'
+      - 'build.gradle.kts'
+      - '.github/workflows/nitro-active-agent-state.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nitro-agent-state-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  state-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up pinned Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Require canonical handoff boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f app/src/main/java/com/ruckus/agent/core/ActiveAgentState.kt
+          grep -Fq 'beginInstallTestHandoff' app/src/main/java/com/ruckus/agent/core/ActiveAgentState.kt
+          grep -Fq 'completeInstallTestHandoff' app/src/main/java/com/ruckus/agent/core/ActiveAgentState.kt
+          grep -Fq 'identity.canonical()' app/src/main/java/com/ruckus/agent/core/ActiveAgentState.kt
+          test "$(gradle --version | awk '/^Gradle / {print $2}')" = "8.9"
+
+      - name: Run active-agent JVM contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon -Pandroid.useAndroidX=true testDebugUnitTest --tests 'com.ruckus.agent.core.ActiveAgentStateTest'
+
+      - name: Prove Android debug integration packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon -Pandroid.useAndroidX=true assembleDebug
+          test -s app/build/outputs/apk/debug/app-debug.apk
