@@ -18,6 +18,9 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Runtime manifest contract tests
+        run: python3 qa/test_verify_runtime_manifest.py
+
       - name: Unit tests
         shell: bash
         run: |
@@ -45,8 +48,41 @@ jobs:
       - name: Assemble release variant
         run: gradle :app:assembleRelease --stacktrace
 
-      - name: Verify release APK structure
-        run: bash qa/verify-apk-release.sh app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Capture packaged manifest evidence
+        shell: bash
+        run: |
+          mkdir -p app/build/outputs/apk/release/evidence
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print \
+            app/build/outputs/apk/release/app-release-unsigned.apk \
+            > app/build/outputs/apk/release/evidence/AndroidManifest.xml
+
+      - name: Verify release APK structure and runtime wiring
+        shell: bash
+        run: |
+          set +e
+          bash qa/verify-apk-release.sh app/build/outputs/apk/release/app-release-unsigned.apk \
+            2>&1 | tee app/build/outputs/apk/release/evidence/release-gate.log
+          status=${PIPESTATUS[0]}
+          if [[ $status -ne 0 ]]; then
+            {
+              echo '## Release APK gate failure'
+              echo '```text'
+              cat app/build/outputs/apk/release/evidence/release-gate.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit "$status"
+          fi
+
+      - name: Upload release-gate diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUKUS-release-gate-diagnostics
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/release/app-release-unsigned.apk
+            app/build/outputs/apk/release/evidence/AndroidManifest.xml
+            app/build/outputs/apk/release/evidence/release-gate.log
 
       - name: Record SHA-256
         run: sha256sum app/build/outputs/apk/release/app-release-unsigned.apk | tee app/build/outputs/apk/release/SHA256SUMS.txt
@@ -58,3 +94,5 @@ jobs:
           path: |
             app/build/outputs/apk/release/app-release-unsigned.apk
             app/build/outputs/apk/release/SHA256SUMS.txt
+            app/build/outputs/apk/release/evidence/AndroidManifest.xml
+            app/build/outputs/apk/release/evidence/release-gate.log
