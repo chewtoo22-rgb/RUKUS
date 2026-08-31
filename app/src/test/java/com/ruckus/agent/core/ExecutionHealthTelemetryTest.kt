@@ -1,5 +1,8 @@
 package com.ruckus.agent.core
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,7 +26,10 @@ class ExecutionHealthTelemetryTest {
     @Test fun `unknown outcomes only affect total count`() {
         ExecutionHealthTelemetry.record("PLAN_PREFLIGHT_OK: safe")
         ExecutionHealthTelemetry.record("RESUME: allowed")
-        assertEquals(ExecutionHealthSnapshot(2, 0, 0, 0, 0, 0, 0, 0), ExecutionHealthTelemetry.snapshot())
+        val snapshot = ExecutionHealthTelemetry.snapshot()
+        assertEquals(ExecutionHealthSnapshot(2, 0, 0, 0, 0, 0, 0, 0), snapshot)
+        assertEquals(0, snapshot.classifiedEvents)
+        assertEquals(2, snapshot.unclassifiedEvents)
     }
 
     @Test fun `action audit feeds aggregate telemetry without copying request payload`() {
@@ -46,5 +52,48 @@ class ExecutionHealthTelemetryTest {
         ExecutionHealthTelemetry.record("TASK_COMPLETE: counted")
         assertEquals(1, ExecutionHealthTelemetry.snapshot().totalEvents)
         assertEquals(1, ExecutionHealthTelemetry.snapshot().completedTasks)
+    }
+
+    @Test fun `concurrent recording preserves exact totals and snapshot invariants`() {
+        val workers = 8
+        val recordsPerWorker = 500
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(workers)
+        val pool = Executors.newFixedThreadPool(workers)
+
+        try {
+            repeat(workers) { worker ->
+                pool.execute {
+                    start.await()
+                    repeat(recordsPerWorker) { index ->
+                        val outcome = when ((worker + index) % 4) {
+                            0 -> "TASK_COMPLETE: proof"
+                            1 -> "VERIFY_FAILED: mismatch"
+                            2 -> "PLAN_PREFLIGHT_OK: safe"
+                            else -> "RECOVERY: retry"
+                        }
+                        ExecutionHealthTelemetry.record(outcome)
+                        val snapshot = ExecutionHealthTelemetry.snapshot()
+                        assertTrue(snapshot.classifiedEvents <= snapshot.totalEvents)
+                        assertEquals(snapshot.totalEvents, snapshot.classifiedEvents + snapshot.unclassifiedEvents)
+                    }
+                    done.countDown()
+                }
+            }
+
+            start.countDown()
+            assertTrue("workers did not finish", done.await(10, TimeUnit.SECONDS))
+
+            val snapshot = ExecutionHealthTelemetry.snapshot()
+            assertEquals((workers * recordsPerWorker).toLong(), snapshot.totalEvents)
+            assertEquals(snapshot.totalEvents, snapshot.classifiedEvents + snapshot.unclassifiedEvents)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `snapshot refuses impossible classified totals`() {
+        ExecutionHealthSnapshot(0, 1, 0, 0, 0, 0, 0, 0)
     }
 }

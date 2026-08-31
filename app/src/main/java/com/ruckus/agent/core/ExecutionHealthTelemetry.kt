@@ -1,8 +1,5 @@
 package com.ruckus.agent.core
 
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
-
 /** Local-only aggregate release-health counters. No request/action payloads or timestamps. */
 data class ExecutionHealthSnapshot(
     val totalEvents: Long,
@@ -13,51 +10,81 @@ data class ExecutionHealthSnapshot(
     val confirmationWaits: Long,
     val verificationFailures: Long,
     val terminalFailures: Long
-)
-
-object ExecutionHealthTelemetry {
-    private val enabled = AtomicBoolean(true)
-    private val totalEvents = AtomicLong()
-    private val completedTasks = AtomicLong()
-    private val verifiedActions = AtomicLong()
-    private val recoveries = AtomicLong()
-    private val blockedActions = AtomicLong()
-    private val confirmationWaits = AtomicLong()
-    private val verificationFailures = AtomicLong()
-    private val terminalFailures = AtomicLong()
-
-    fun setEnabled(value: Boolean) {
-        enabled.set(value)
-    }
-
-    fun isEnabled(): Boolean = enabled.get()
-
-    fun record(outcome: String) {
-        if (!enabled.get()) return
-
-        totalEvents.incrementAndGet()
-        when {
-            outcome.startsWith("TASK_COMPLETE:") -> completedTasks.incrementAndGet()
-            outcome.startsWith("OK+VERIFIED:") -> verifiedActions.incrementAndGet()
-            outcome.startsWith("RECOVERY:") || outcome.startsWith("REPLAN:") ||
-                outcome.startsWith("VERIFY_REPLAN:") || outcome.startsWith("COMPLETION_REPAIR:") -> recoveries.incrementAndGet()
-            outcome.startsWith("PLAN_PREFLIGHT_BLOCKED:") || outcome.startsWith("CRASH_AMBIGUOUS_BLOCKED:") ||
-                outcome.startsWith("RECOVERY_BUDGET_EXHAUSTED:") -> blockedActions.incrementAndGet()
-            outcome.startsWith("PLAN_AWAITING_CONFIRMATION:") || outcome == "AWAITING_ACTION_BOUND_CONFIRMATION" -> confirmationWaits.incrementAndGet()
-            outcome.startsWith("VERIFY_FAILED:") || outcome.startsWith("COMPLETION_GATE_FAILED:") ||
-                outcome.startsWith("COMPLETION_REPAIR_VERIFY_FAILED:") || outcome.startsWith("COMPLETION_REPAIR_GATE_FAILED:") -> verificationFailures.incrementAndGet()
-            outcome.startsWith("FAILED:") || outcome.startsWith("COMPLETION_REPAIR_EXEC_FAILED:") -> terminalFailures.incrementAndGet()
+) {
+    init {
+        require(totalEvents >= 0)
+        require(completedTasks >= 0)
+        require(verifiedActions >= 0)
+        require(recoveries >= 0)
+        require(blockedActions >= 0)
+        require(confirmationWaits >= 0)
+        require(verificationFailures >= 0)
+        require(terminalFailures >= 0)
+        require(classifiedEvents <= totalEvents) {
+            "classified execution-health events cannot exceed total events"
         }
     }
 
-    fun snapshot() = ExecutionHealthSnapshot(
-        totalEvents.get(), completedTasks.get(), verifiedActions.get(), recoveries.get(),
-        blockedActions.get(), confirmationWaits.get(), verificationFailures.get(), terminalFailures.get()
-    )
+    val classifiedEvents: Long
+        get() = completedTasks + verifiedActions + recoveries + blockedActions +
+            confirmationWaits + verificationFailures + terminalFailures
 
-    internal fun resetForTests() {
-        enabled.set(true)
-        totalEvents.set(0); completedTasks.set(0); verifiedActions.set(0); recoveries.set(0)
-        blockedActions.set(0); confirmationWaits.set(0); verificationFailures.set(0); terminalFailures.set(0)
+    val unclassifiedEvents: Long
+        get() = totalEvents - classifiedEvents
+}
+
+object ExecutionHealthTelemetry {
+    private val lock = Any()
+    private var enabled = true
+    private var totalEvents = 0L
+    private var completedTasks = 0L
+    private var verifiedActions = 0L
+    private var recoveries = 0L
+    private var blockedActions = 0L
+    private var confirmationWaits = 0L
+    private var verificationFailures = 0L
+    private var terminalFailures = 0L
+
+    fun setEnabled(value: Boolean) = synchronized(lock) {
+        enabled = value
+    }
+
+    fun isEnabled(): Boolean = synchronized(lock) { enabled }
+
+    fun record(outcome: String) = synchronized(lock) {
+        if (!enabled) return@synchronized
+
+        totalEvents++
+        when {
+            outcome.startsWith("TASK_COMPLETE:") -> completedTasks++
+            outcome.startsWith("OK+VERIFIED:") -> verifiedActions++
+            outcome.startsWith("RECOVERY:") || outcome.startsWith("REPLAN:") ||
+                outcome.startsWith("VERIFY_REPLAN:") || outcome.startsWith("COMPLETION_REPAIR:") -> recoveries++
+            outcome.startsWith("PLAN_PREFLIGHT_BLOCKED:") || outcome.startsWith("CRASH_AMBIGUOUS_BLOCKED:") ||
+                outcome.startsWith("RECOVERY_BUDGET_EXHAUSTED:") -> blockedActions++
+            outcome.startsWith("PLAN_AWAITING_CONFIRMATION:") || outcome == "AWAITING_ACTION_BOUND_CONFIRMATION" -> confirmationWaits++
+            outcome.startsWith("VERIFY_FAILED:") || outcome.startsWith("COMPLETION_GATE_FAILED:") ||
+                outcome.startsWith("COMPLETION_REPAIR_VERIFY_FAILED:") || outcome.startsWith("COMPLETION_REPAIR_GATE_FAILED:") -> verificationFailures++
+            outcome.startsWith("FAILED:") || outcome.startsWith("COMPLETION_REPAIR_EXEC_FAILED:") -> terminalFailures++
+        }
+    }
+
+    fun snapshot(): ExecutionHealthSnapshot = synchronized(lock) {
+        ExecutionHealthSnapshot(
+            totalEvents, completedTasks, verifiedActions, recoveries,
+            blockedActions, confirmationWaits, verificationFailures, terminalFailures
+        )
+    }
+
+    internal fun resetForTests() = synchronized(lock) {
+        enabled = true
+        totalEvents = 0
+        completedTasks = 0
+        verifiedActions = 0
+        recoveries = 0
+        blockedActions = 0
+        confirmationWaits = 0
+        verificationFailures = 0
+        terminalFailures = 0
     }
 }
