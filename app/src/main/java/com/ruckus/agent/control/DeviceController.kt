@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.provider.Settings
 import com.ruckus.agent.core.AgentAction
 import com.ruckus.agent.core.AppLaunchMatchPolicy
+import com.ruckus.agent.core.BrightnessMutationPolicy
 import com.ruckus.agent.core.InstalledAppLaunchResolver
 import com.ruckus.agent.core.ObservedLaunchInventoryPolicy
 import com.ruckus.agent.core.SystemNavigationResult
@@ -50,8 +51,15 @@ class DeviceController(private val context: Context) {
             is AgentAction.TypeText -> { check(RuckusAccessibilityService.instance?.typeFocused(action.text) == true) { "No enabled, editable, non-sensitive focused field" }; "Typed text" }
             AgentAction.InspectScreen -> inspectScreen()
             is AgentAction.SetBrightness -> {
-                require(action.percent in 0..100); check(Settings.System.canWrite(context)) { "WRITE_SETTINGS not granted" }
-                Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, (action.percent * 255 / 100).coerceIn(1,255)); "Brightness ${action.percent}%"
+                require(action.percent in 0..100)
+                check(Settings.System.canWrite(context)) { "WRITE_SETTINGS not granted" }
+                val applied = Settings.System.putInt(
+                    context.contentResolver,
+                    Settings.System.SCREEN_BRIGHTNESS,
+                    BrightnessMutationPolicy.toSystemValue(action.percent)
+                )
+                BrightnessMutationPolicy.requireApplied(applied, action.percent)
+                "Brightness ${action.percent}%"
             }
             is AgentAction.SetMediaVolume -> {
                 require(action.percent in 0..100)
