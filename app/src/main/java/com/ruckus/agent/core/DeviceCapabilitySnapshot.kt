@@ -50,12 +50,15 @@ object DeviceCapabilityReader {
         val shizuku = runCatching { ShizukuStateReader.read() }.getOrNull()
         return fromStates(
             accessibilityReady = RuckusAccessibilityService.instance != null,
-            writeSettingsReady = Settings.System.canWrite(appContext),
+            writeSettingsReady = safeWriteSettingsRead { Settings.System.canWrite(appContext) },
             shizukuBinderAvailable = shizuku?.binderAvailable == true,
             shizukuPermissionGranted = shizuku?.permissionGranted == true,
             approvedShellReady = false // Bounded Shizuku shell adapter is not implemented yet.
         )
     }
+
+    internal fun safeWriteSettingsRead(read: () -> Boolean): Boolean =
+        runCatching(read).getOrDefault(false)
 
     internal fun fromStates(
         accessibilityReady: Boolean,

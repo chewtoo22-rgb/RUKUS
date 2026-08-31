@@ -70,4 +70,19 @@ class DeviceCapabilitySnapshotTest {
                 .remediation.contains("Grant RUKUS permission")
         )
     }
+
+    @Test
+    fun writeSettingsSamplingFailureFailsClosed() {
+        assertFalse(
+            DeviceCapabilityReader.safeWriteSettingsRead {
+                throw SecurityException("settings provider unavailable")
+            }
+        )
+    }
+
+    @Test
+    fun writeSettingsSamplingPreservesGrantedAndDeniedStates() {
+        assertTrue(DeviceCapabilityReader.safeWriteSettingsRead { true })
+        assertFalse(DeviceCapabilityReader.safeWriteSettingsRead { false })
+    }
 }
