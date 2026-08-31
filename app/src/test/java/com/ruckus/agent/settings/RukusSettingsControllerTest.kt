@@ -1,15 +1,28 @@
 package com.ruckus.agent.settings
 
+import com.ruckus.agent.core.ExecutionHealthTelemetry
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RukusSettingsControllerTest {
+    @After
+    fun restoreTelemetryDefault() {
+        ExecutionHealthTelemetry.setEnabled(true)
+    }
+
     @Test
     fun freshInstallNeedsOnboarding() {
         val controller = RukusSettingsController(FakeStore(), currentTutorialVersion = 2)
         assertTrue(controller.needsOnboarding())
+    }
+
+    @Test
+    fun controllerAppliesPersistedTelemetryPreferenceAtStartup() {
+        RukusSettingsController(FakeStore(initial = RukusSettings(telemetryEnabled = false)))
+        assertFalse(ExecutionHealthTelemetry.isEnabled())
     }
 
     @Test
@@ -96,17 +109,22 @@ class RukusSettingsControllerTest {
         assertFalse(controller.snapshot().telemetryEnabled)
         assertFalse(controller.snapshot().hapticsEnabled)
         assertFalse(controller.snapshot().confirmationsEnabled)
+        assertFalse(ExecutionHealthTelemetry.isEnabled())
         assertEquals(controller.snapshot(), store.persisted)
     }
 
     @Test
-    fun failedPersistenceDoesNotAdvanceInMemoryState() {
+    fun failedPersistenceDoesNotAdvanceInMemoryOrRuntimeTelemetryState() {
         val store = FakeStore(failWrites = true)
         val controller = RukusSettingsController(store)
         val before = controller.snapshot()
+        assertTrue(ExecutionHealthTelemetry.isEnabled())
+
         runCatching { controller.setTelemetryEnabled(false) }
+
         assertEquals(before, controller.snapshot())
         assertEquals(before, store.persisted)
+        assertTrue(ExecutionHealthTelemetry.isEnabled())
     }
 
     @Test
@@ -115,6 +133,7 @@ class RukusSettingsControllerTest {
         val controller = RukusSettingsController(store)
         controller.setTelemetryEnabled(true)
         assertEquals(0, store.saveCount)
+        assertTrue(ExecutionHealthTelemetry.isEnabled())
     }
 
     @Test
