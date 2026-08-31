@@ -1,0 +1,88 @@
+name: RUKUS APK Provenance Contract
+
+on:
+  pull_request:
+    paths:
+      - 'qa/validate_apk_provenance.py'
+      - 'qa/test_validate_apk_provenance.py'
+      - '.github/workflows/apk-provenance-contract.yml'
+      - 'app/**'
+  push:
+    branches: [ main ]
+    paths:
+      - 'qa/validate_apk_provenance.py'
+      - 'qa/test_validate_apk_provenance.py'
+      - '.github/workflows/apk-provenance-contract.yml'
+      - 'app/**'
+
+permissions:
+  contents: read
+
+jobs:
+  apk-provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Run provenance regression suite
+        run: PYTHONPATH=qa python3 qa/test_validate_apk_provenance.py
+
+      - name: Assemble release APK
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Build exact-head provenance evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk='app/build/outputs/apk/release/app-release-unsigned.apk'
+          analyzer="${ANDROID_HOME}/cmdline-tools/latest/bin/apkanalyzer"
+          app_id="$($analyzer manifest application-id "$apk")"
+          version_code="$($analyzer manifest version-code "$apk")"
+          apk_sha="$(sha256sum "$apk" | awk '{print $1}')"
+          apk_size="$(stat -c '%s' "$apk")"
+          python3 - "$SOURCE_SHA" "$app_id" "$version_code" "$apk_sha" "$apk_size" <<'PY'
+          import json
+          import pathlib
+          import sys
+          source_sha, app_id, version_code, apk_sha, apk_size = sys.argv[1:]
+          payload = {
+              'schema_version': 1,
+              'product': 'RUKUS',
+              'source_sha': source_sha,
+              'application_id': app_id,
+              'version_code': int(version_code),
+              'apk_filename': 'app-release-unsigned.apk',
+              'apk_size': int(apk_size),
+              'apk_sha256': apk_sha,
+              'signed': False,
+          }
+          out = pathlib.Path('app/build/outputs/apk/release/RUKUS-PROVENANCE.json')
+          out.write_text(json.dumps(payload, sort_keys=True, separators=(',', ':')) + '\n', encoding='utf-8')
+          PY
+
+      - name: Validate provenance against artifact bytes
+        run: |
+          python3 qa/validate_apk_provenance.py \
+            app/build/outputs/apk/release/RUKUS-PROVENANCE.json \
+            app/build/outputs/apk/release/app-release-unsigned.apk \
+            --expected-sha "$SOURCE_SHA"
+
+      - name: Upload provenance-bound release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUKUS-release-provenance
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/release/app-release-unsigned.apk
+            app/build/outputs/apk/release/RUKUS-PROVENANCE.json
