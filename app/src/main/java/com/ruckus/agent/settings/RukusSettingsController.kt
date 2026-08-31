@@ -48,11 +48,6 @@ class RukusSettingsController(
         return plan
     }
 
-    /** Compatibility path for callers that already enforce readiness externally. */
-    fun completeOnboarding(): RukusSettings = update {
-        it.completeOnboarding(currentTutorialVersion)
-    }
-
     private inline fun update(transform: (RukusSettings) -> RukusSettings): RukusSettings {
         val next = transform(current)
         if (next == current) return current
