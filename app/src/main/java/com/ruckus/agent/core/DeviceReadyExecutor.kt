@@ -20,22 +20,35 @@ class DeviceReadyExecutor(context: Context) {
      */
     fun capabilities(): DeviceCapabilitySnapshot = DeviceCapabilityReader.read(appContext)
 
-    fun run(request: String, approved: Boolean = false): ExecutionReport {
+    fun run(request: String, approved: Boolean = false): ExecutionReport = withExecutionLease {
         val plan = CommandPlanner.plan(request)
         if (plan.actions.isEmpty() || plan.rejectedParts.isNotEmpty()) {
-            return delegate.run(request, approved)
+            return@withExecutionLease delegate.run(request, approved)
         }
-        preflight(plan.actions, 0)?.let { return it }
-        return delegate.run(request, approved)
+        preflight(plan.actions, 0)?.let { return@withExecutionLease it }
+        delegate.run(request, approved)
     }
 
-    fun resumeLast(approved: Boolean = false): ExecutionReport {
-        val session = delegate.lastSession() ?: return delegate.resumeLast(approved)
+    fun resumeLast(approved: Boolean = false): ExecutionReport = withExecutionLease {
+        val session = delegate.lastSession() ?: return@withExecutionLease delegate.resumeLast(approved)
         val plan = CommandPlanner.plan(session.request)
         val resume = ResumePolicy.decide(session, plan)
-        if (!resume.allowed) return delegate.resumeLast(approved)
-        preflight(plan.actions, resume.startStep)?.let { return it }
-        return delegate.resumeLast(approved)
+        if (!resume.allowed) return@withExecutionLease delegate.resumeLast(approved)
+        preflight(plan.actions, resume.startStep)?.let { return@withExecutionLease it }
+        delegate.resumeLast(approved)
+    }
+
+    private fun withExecutionLease(block: () -> ExecutionReport): ExecutionReport {
+        if (!executionGate.tryAcquire()) {
+            val reason = "Another RUKUS command is already executing. Wait for it to finish before starting or resuming another task."
+            ActionAudit.record("execution-admission", null, "EXECUTION_BUSY_BLOCKED: $reason")
+            return ExecutionReport(ok = false, message = reason)
+        }
+        return try {
+            block()
+        } finally {
+            executionGate.release()
+        }
     }
 
     private fun preflight(actions: List<AgentAction>, startStep: Int): ExecutionReport? {
@@ -63,5 +76,9 @@ class DeviceReadyExecutor(context: Context) {
             .getLaunchIntentForPackage(action.packageName) != null
         is AgentAction.OpenAppByName -> InstalledAppLaunchResolver.resolve(appContext, action.appName) != null
         else -> true
+    }
+
+    private companion object {
+        val executionGate = ExecutionAdmissionGate()
     }
 }
