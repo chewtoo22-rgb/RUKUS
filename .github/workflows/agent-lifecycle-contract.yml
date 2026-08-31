@@ -1,0 +1,45 @@
+name: RUKUS Agent Lifecycle Contract
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/ruckus/agent/core/AgentLifecycle.kt'
+      - 'app/src/test/java/com/ruckus/agent/core/AgentLifecycleReducerTest.kt'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/agent-lifecycle-contract.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'app/src/main/java/com/ruckus/agent/core/AgentLifecycle.kt'
+      - 'app/src/test/java/com/ruckus/agent/core/AgentLifecycleReducerTest.kt'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/agent-lifecycle-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Run focused lifecycle regressions
+        run: gradle :app:testDebugUnitTest --tests 'com.ruckus.agent.core.AgentLifecycleReducerTest' --stacktrace
+      - name: Enforce reducer isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          file='app/src/main/java/com/ruckus/agent/core/AgentLifecycle.kt'
+          ! grep -Eq 'android\.|androidx\.|ProcessBuilder|Runtime\.getRuntime|Shizuku|AccessibilityService' "$file"
+          grep -F 'IllegalAgentLifecycleTransition' "$file"
+          grep -F 'TERMINAL_ACKNOWLEDGED' "$file"
+          grep -F 'CONFIRMATION_REQUIRED' "$file"
