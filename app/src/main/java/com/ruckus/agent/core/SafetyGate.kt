@@ -12,6 +12,8 @@ object SafetyGate {
         is AgentAction.Tap,
         is AgentAction.Swipe,
         is AgentAction.TypeText,
+        is AgentAction.ClickText,
+        AgentAction.ReadScreen,
         is AgentAction.SetBrightness,
         is AgentAction.SetMediaVolume -> SafetyDecision(Risk.SAFE, "Routine device action")
         is AgentAction.RunApprovedShell -> SafetyDecision(Risk.CONFIRM, "Privileged action requires approval")

@@ -32,7 +32,25 @@ class DeviceController(private val context: Context) {
                 check(RuckusAccessibilityService.instance?.swipe(action.x1, action.y1, action.x2, action.y2, action.durationMs) == true)
                 "Swiped"
             }
-            is AgentAction.TypeText -> error("Text injection adapter is queued for Phase 1")
+            is AgentAction.TypeText -> {
+                val service = checkNotNull(RuckusAccessibilityService.instance) { "Accessibility service unavailable" }
+                check(AccessibilitySelectors.typeIntoFocused(service.rootInActiveWindow, action.text)) { "No editable field is focused" }
+                "Typed text"
+            }
+            is AgentAction.ClickText -> {
+                val service = checkNotNull(RuckusAccessibilityService.instance) { "Accessibility service unavailable" }
+                check(AccessibilitySelectors.clickByLabel(service.rootInActiveWindow, action.text)) { "Could not find clickable label: ${action.text}" }
+                "Clicked ${action.text}"
+            }
+            AgentAction.ReadScreen -> {
+                val service = checkNotNull(RuckusAccessibilityService.instance) { "Accessibility service unavailable" }
+                val nodes = AccessibilitySelectors.flatten(service.rootInActiveWindow)
+                nodes.mapNotNull { it.text ?: it.contentDescription }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .joinToString("\n")
+                    .ifBlank { "No readable accessibility text on screen" }
+            }
             is AgentAction.SetBrightness -> {
                 require(action.percent in 0..100)
                 check(Settings.System.canWrite(context)) { "WRITE_SETTINGS not granted" }
@@ -41,13 +59,14 @@ class DeviceController(private val context: Context) {
                 "Brightness ${action.percent}%"
             }
             is AgentAction.SetMediaVolume -> {
+                require(action.percent in 0..100)
                 val am = context.getSystemService(AudioManager::class.java)
                 val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                 val target = (max * action.percent / 100).coerceIn(0, max)
                 am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
                 "Media ${action.percent}%"
             }
-            is AgentAction.RunApprovedShell -> error("Shizuku shell adapter is scaffolded but intentionally not wired to arbitrary commands")
+            is AgentAction.RunApprovedShell -> error("Only bounded Shizuku command adapters may execute privileged actions")
         }
     }
 }
