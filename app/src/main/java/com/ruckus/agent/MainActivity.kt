@@ -26,6 +26,9 @@ import com.ruckus.agent.settings.OnboardingReadinessPolicy
 import com.ruckus.agent.settings.OnboardingStep
 import com.ruckus.agent.settings.RukusSettingsController
 import com.ruckus.agent.settings.SharedPreferencesRukusSettingsStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 
 class MainActivity : ComponentActivity() {
@@ -218,6 +221,8 @@ private fun Dashboard(executor: DeviceReadyExecutor, onAccessibility: () -> Unit
     var result by remember { mutableStateOf("Ready. Try: open Spotify, scroll down, inspect screen, tap Allow, volume 30") }
     var session by remember { mutableStateOf(executor.lastSession()) }
     var refresh by remember { mutableIntStateOf(0) }
+    var isExecuting by remember { mutableStateOf(false) }
+    val executionScope = rememberCoroutineScope()
     val shizuku = remember(refresh) { runCatching { ShizukuStateReader.read() }.getOrNull() }
 
     fun show(report: ExecutionReport) {
@@ -225,13 +230,27 @@ private fun Dashboard(executor: DeviceReadyExecutor, onAccessibility: () -> Unit
         session = executor.lastSession()
     }
 
+    fun launchExecution(block: () -> ExecutionReport) {
+        if (isExecuting) return
+        isExecuting = true
+        executionScope.launch {
+            val report = try {
+                withContext(Dispatchers.IO) { block() }
+            } catch (failure: Throwable) {
+                ExecutionReport(false, failure.message ?: "Command execution failed")
+            }
+            show(report)
+            isExecuting = false
+        }
+    }
+
     fun execute(text: String) {
         command = text
-        show(executor.run(text))
+        launchExecution { executor.run(text) }
     }
 
     fun resume(approved: Boolean = false) {
-        show(executor.resumeLast(approved))
+        launchExecution { executor.resumeLast(approved) }
     }
 
     Column(
@@ -251,13 +270,29 @@ private fun Dashboard(executor: DeviceReadyExecutor, onAccessibility: () -> Unit
             }
         )
 
-        OutlinedTextField(command, { command = it }, Modifier.fillMaxWidth(), label = { Text("Tell RUKUS what to do") }, singleLine = true)
-        Button(onClick = { execute(command) }, modifier = Modifier.fillMaxWidth(), enabled = command.isNotBlank()) { Text("EXECUTE") }
+        OutlinedTextField(
+            command,
+            { command = it },
+            Modifier.fillMaxWidth(),
+            label = { Text("Tell RUKUS what to do") },
+            singleLine = true,
+            enabled = !isExecuting
+        )
+        Button(
+            onClick = { execute(command) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = command.isNotBlank() && !isExecuting
+        ) {
+            Text(if (isExecuting) "EXECUTING…" else "EXECUTE")
+        }
+        if (isExecuting) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AssistChip(onClick = { execute("inspect screen") }, label = { Text("Inspect") })
-            AssistChip(onClick = { execute("scroll down") }, label = { Text("Scroll ↓") })
-            AssistChip(onClick = { execute("home") }, label = { Text("Home") })
+            AssistChip(onClick = { execute("inspect screen") }, label = { Text("Inspect") }, enabled = !isExecuting)
+            AssistChip(onClick = { execute("scroll down") }, label = { Text("Scroll ↓") }, enabled = !isExecuting)
+            AssistChip(onClick = { execute("home") }, label = { Text("Home") }, enabled = !isExecuting)
         }
         Text(result, style = MaterialTheme.typography.bodyMedium)
 
@@ -271,10 +306,18 @@ private fun Dashboard(executor: DeviceReadyExecutor, onAccessibility: () -> Unit
                 saved.status == AgentTaskState.Status.EXECUTING ||
                 saved.status == AgentTaskState.Status.WAITING_CONFIRMATION
             if (resumable) {
-                OutlinedButton(onClick = { resume(false) }, modifier = Modifier.fillMaxWidth()) { Text("RESUME SAVED TASK") }
+                OutlinedButton(
+                    onClick = { resume(false) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isExecuting
+                ) { Text("RESUME SAVED TASK") }
             }
             if (saved.status == AgentTaskState.Status.WAITING_CONFIRMATION) {
-                Button(onClick = { resume(true) }, modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = { resume(true) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isExecuting
+                ) {
                     Text("CONFIRM EXACT PENDING ACTION")
                 }
                 Text(
@@ -298,8 +341,8 @@ private fun Dashboard(executor: DeviceReadyExecutor, onAccessibility: () -> Unit
         }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onAccessibility, Modifier.weight(1f)) { Text("Accessibility") }
-            OutlinedButton(onWriteSettings, Modifier.weight(1f)) { Text("Settings") }
+            OutlinedButton(onAccessibility, Modifier.weight(1f), enabled = !isExecuting) { Text("Accessibility") }
+            OutlinedButton(onWriteSettings, Modifier.weight(1f), enabled = !isExecuting) { Text("Settings") }
         }
         if (shizuku?.binderAvailable == true && shizuku.permissionGranted.not()) {
             OutlinedButton(
@@ -307,10 +350,15 @@ private fun Dashboard(executor: DeviceReadyExecutor, onAccessibility: () -> Unit
                     runCatching { Shizuku.requestPermission(1001) }
                     refresh++
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isExecuting
             ) { Text("Grant Shizuku") }
         }
-        TextButton(onClick = { refresh++; session = executor.lastSession() }, modifier = Modifier.fillMaxWidth()) { Text("Refresh status") }
+        TextButton(
+            onClick = { refresh++; session = executor.lastSession() },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isExecuting
+        ) { Text("Refresh status") }
     }
 }
 
