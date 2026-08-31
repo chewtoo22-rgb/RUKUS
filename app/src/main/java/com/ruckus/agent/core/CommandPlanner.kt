@@ -10,8 +10,11 @@ object CommandPlanner {
             return Plan(emptyList(), listOf("goal rejected: ${goal.reason}"))
         }
 
+        // Only explicit sequencing language is treated as a command boundary.
+        // Plain "and" is valid user data in app names and typed text, so splitting on it
+        // can silently change intent (for example, "type rock and roll").
         val parts = goal.normalizedGoal
-            .split(Regex("\\s+(?:and then|then|and)\\s+", RegexOption.IGNORE_CASE))
+            .split(Regex("\\s+(?:and then|then)\\s+", RegexOption.IGNORE_CASE))
             .map { it.trim() }
             .filter { it.isNotEmpty() }
 
