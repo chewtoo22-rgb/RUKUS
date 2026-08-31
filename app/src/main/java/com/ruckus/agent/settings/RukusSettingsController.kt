@@ -1,5 +1,7 @@
 package com.ruckus.agent.settings
 
+import com.ruckus.agent.core.ExecutionHealthTelemetry
+
 class RukusSettingsController(
     private val store: RukusSettingsStore,
     private val currentTutorialVersion: Int = 1
@@ -8,14 +10,18 @@ class RukusSettingsController(
         require(currentTutorialVersion >= 0) { "currentTutorialVersion must be non-negative" }
     }
 
-    private var current: RukusSettings = store.load()
+    private var current: RukusSettings = store.load().also {
+        ExecutionHealthTelemetry.setEnabled(it.telemetryEnabled)
+    }
 
     fun snapshot(): RukusSettings = current
 
     fun needsOnboarding(): Boolean = current.needsOnboarding(currentTutorialVersion)
 
-    fun setTelemetryEnabled(enabled: Boolean): RukusSettings = update {
-        it.copy(telemetryEnabled = enabled)
+    fun setTelemetryEnabled(enabled: Boolean): RukusSettings {
+        val next = update { it.copy(telemetryEnabled = enabled) }
+        ExecutionHealthTelemetry.setEnabled(next.telemetryEnabled)
+        return next
     }
 
     fun setHapticsEnabled(enabled: Boolean): RukusSettings = update {
