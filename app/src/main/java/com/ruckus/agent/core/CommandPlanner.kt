@@ -4,17 +4,22 @@ package com.ruckus.agent.core
 object CommandPlanner {
     data class Plan(val actions: List<AgentAction>, val rejectedParts: List<String>)
 
+    private val sequenceBoundary = Regex(
+        """\s+(?:and then|then)\s+(?=(?:go home|home|go back|back|open package\s+|open\s+|scroll down|swipe up|scroll up|swipe down|inspect screen|what's on screen|whats on screen|read screen|tap\s+|click\s+|type\s+|brightness\s+|volume\s+))""",
+        RegexOption.IGNORE_CASE
+    )
+
     fun plan(raw: String): Plan {
         val goal = GoalAdmissionPolicy.evaluate(raw)
         if (!goal.allowed) {
             return Plan(emptyList(), listOf("goal rejected: ${goal.reason}"))
         }
 
-        // Only explicit sequencing language is treated as a command boundary.
-        // Plain "and" is valid user data in app names and typed text, so splitting on it
-        // can silently change intent (for example, "type rock and roll").
+        // Treat sequencing language as a boundary only when the following fragment can begin a
+        // supported deterministic command. This preserves ordinary argument text such as
+        // "type better then ever" while retaining chains such as "home then open settings".
         val parts = goal.normalizedGoal
-            .split(Regex("\\s+(?:and then|then)\\s+", RegexOption.IGNORE_CASE))
+            .split(sequenceBoundary)
             .map { it.trim() }
             .filter { it.isNotEmpty() }
 
