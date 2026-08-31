@@ -1,5 +1,6 @@
 package com.ruckus.agent.settings
 
+import com.ruckus.agent.core.ConfirmationRuntimePolicy
 import com.ruckus.agent.core.ExecutionHealthTelemetry
 
 class RukusSettingsController(
@@ -12,6 +13,7 @@ class RukusSettingsController(
 
     private var current: RukusSettings = store.load().also {
         ExecutionHealthTelemetry.setEnabled(it.telemetryEnabled)
+        ConfirmationRuntimePolicy.setPromptsEnabled(it.confirmationsEnabled)
     }
 
     fun snapshot(): RukusSettings = current
@@ -28,8 +30,10 @@ class RukusSettingsController(
         it.copy(hapticsEnabled = enabled)
     }
 
-    fun setConfirmationsEnabled(enabled: Boolean): RukusSettings = update {
-        it.copy(confirmationsEnabled = enabled)
+    fun setConfirmationsEnabled(enabled: Boolean): RukusSettings {
+        val next = update { it.copy(confirmationsEnabled = enabled) }
+        ConfirmationRuntimePolicy.setPromptsEnabled(next.confirmationsEnabled)
+        return next
     }
 
     /**

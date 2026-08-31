@@ -1,10 +1,15 @@
 package com.ruckus.agent.core
 
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 
 class PlanSafetyPreflightTest {
     private fun approvalFor(action: AgentAction): String = PlanSafetyPreflight.approvalFingerprint(action)
+
+    @After fun restoreConfirmationPolicy() {
+        ConfirmationRuntimePolicy.resetForTests()
+    }
 
     @Test fun laterConfirmationBlocksBeforeEarlierSafeStepsRun() {
         val actions=listOf(
@@ -17,6 +22,29 @@ class PlanSafetyPreflightTest {
         assertTrue(decision.needsConfirmation)
         assertEquals(2,decision.actionIndex)
         assertTrue(decision.action is AgentAction.RunApprovedShell)
+    }
+
+    @Test fun disabledConfirmationPromptsBlockHighImpactActionWithoutRequestingApproval() {
+        ConfirmationRuntimePolicy.setPromptsEnabled(false)
+        val action=AgentAction.TapLabel("Send")
+        val decision=PlanSafetyPreflight.evaluate(listOf(action), approved=false)
+        assertFalse(decision.allowed)
+        assertFalse(decision.needsConfirmation)
+        assertEquals(action, decision.action)
+        assertTrue(decision.reason.contains("disabled in RUKUS settings"))
+    }
+
+    @Test fun disabledConfirmationPromptsInvalidatePreviouslyBoundApproval() {
+        val action=AgentAction.TapLabel("Send")
+        ConfirmationRuntimePolicy.setPromptsEnabled(false)
+        val decision=PlanSafetyPreflight.evaluate(
+            listOf(action),
+            approved=true,
+            approvedActionFingerprint=approvalFor(action)
+        )
+        assertFalse(decision.allowed)
+        assertFalse(decision.needsConfirmation)
+        assertEquals(action, decision.action)
     }
 
     @Test fun actionBoundApprovalAllowsWholeRemainingPlanToProceed() {
