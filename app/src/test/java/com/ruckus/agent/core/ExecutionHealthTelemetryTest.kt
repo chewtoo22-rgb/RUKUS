@@ -2,6 +2,8 @@ package com.ruckus.agent.core
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -29,5 +31,20 @@ class ExecutionHealthTelemetryTest {
         val snapshot = ExecutionHealthTelemetry.snapshot()
         assertEquals(1, snapshot.totalEvents)
         assertEquals(1, snapshot.completedTasks)
+    }
+
+    @Test fun `disabled telemetry drops events until explicitly reenabled`() {
+        ExecutionHealthTelemetry.setEnabled(false)
+        assertFalse(ExecutionHealthTelemetry.isEnabled())
+
+        ExecutionHealthTelemetry.record("TASK_COMPLETE: should not count")
+        ActionAudit.record("request still stays in local audit", null, "FAILED: should not count")
+        assertEquals(ExecutionHealthSnapshot(0, 0, 0, 0, 0, 0, 0, 0), ExecutionHealthTelemetry.snapshot())
+
+        ExecutionHealthTelemetry.setEnabled(true)
+        assertTrue(ExecutionHealthTelemetry.isEnabled())
+        ExecutionHealthTelemetry.record("TASK_COMPLETE: counted")
+        assertEquals(1, ExecutionHealthTelemetry.snapshot().totalEvents)
+        assertEquals(1, ExecutionHealthTelemetry.snapshot().completedTasks)
     }
 }
