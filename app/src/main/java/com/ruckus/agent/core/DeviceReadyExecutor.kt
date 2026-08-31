@@ -1,8 +1,6 @@
 package com.ruckus.agent.core
 
 import android.content.Context
-import android.provider.Settings
-import com.ruckus.agent.control.RuckusAccessibilityService
 
 /**
  * App-facing executor facade that fails closed before any side effect when the
@@ -52,12 +50,13 @@ class DeviceReadyExecutor(context: Context) {
     }
 
     private fun preflight(actions: List<AgentAction>, startStep: Int): ExecutionReport? {
+        val capabilities = DeviceCapabilityReader.read(appContext)
         val decision = DeviceReadinessPreflight.evaluate(
             actions = actions,
             startStep = startStep,
-            accessibilityReady = RuckusAccessibilityService.instance != null,
-            writeSettingsReady = Settings.System.canWrite(appContext),
-            approvedShellReady = false, // DeviceController's bounded Shizuku adapter is not implemented yet.
+            accessibilityReady = capabilities.isReady(DeviceCapability.ACCESSIBILITY_CONTROL),
+            writeSettingsReady = capabilities.isReady(DeviceCapability.WRITE_SETTINGS),
+            approvedShellReady = capabilities.isReady(DeviceCapability.APPROVED_SHELL),
             launchTargetReady = ::isLaunchTargetReady
         )
         if (decision.allowed) return null
