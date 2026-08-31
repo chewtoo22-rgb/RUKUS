@@ -1,5 +1,6 @@
 package com.ruckus.agent.settings
 
+import com.ruckus.agent.core.ConfirmationRuntimePolicy
 import com.ruckus.agent.core.ExecutionHealthTelemetry
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -9,8 +10,9 @@ import org.junit.Test
 
 class RukusSettingsControllerTest {
     @After
-    fun restoreTelemetryDefault() {
+    fun restoreRuntimeDefaults() {
         ExecutionHealthTelemetry.setEnabled(true)
+        ConfirmationRuntimePolicy.setPromptsEnabled(true)
     }
 
     @Test
@@ -23,6 +25,12 @@ class RukusSettingsControllerTest {
     fun controllerAppliesPersistedTelemetryPreferenceAtStartup() {
         RukusSettingsController(FakeStore(initial = RukusSettings(telemetryEnabled = false)))
         assertFalse(ExecutionHealthTelemetry.isEnabled())
+    }
+
+    @Test
+    fun controllerAppliesPersistedConfirmationPreferenceAtStartup() {
+        RukusSettingsController(FakeStore(initial = RukusSettings(confirmationsEnabled = false)))
+        assertFalse(ConfirmationRuntimePolicy.promptsEnabled())
     }
 
     @Test
@@ -121,6 +129,7 @@ class RukusSettingsControllerTest {
         assertFalse(controller.snapshot().hapticsEnabled)
         assertFalse(controller.snapshot().confirmationsEnabled)
         assertFalse(ExecutionHealthTelemetry.isEnabled())
+        assertFalse(ConfirmationRuntimePolicy.promptsEnabled())
         assertEquals(controller.snapshot(), store.persisted)
     }
 
@@ -136,6 +145,20 @@ class RukusSettingsControllerTest {
         assertEquals(before, controller.snapshot())
         assertEquals(before, store.persisted)
         assertTrue(ExecutionHealthTelemetry.isEnabled())
+    }
+
+    @Test
+    fun failedPersistenceDoesNotAdvanceRuntimeConfirmationState() {
+        val store = FakeStore(failWrites = true)
+        val controller = RukusSettingsController(store)
+        val before = controller.snapshot()
+        assertTrue(ConfirmationRuntimePolicy.promptsEnabled())
+
+        runCatching { controller.setConfirmationsEnabled(false) }
+
+        assertEquals(before, controller.snapshot())
+        assertEquals(before, store.persisted)
+        assertTrue(ConfirmationRuntimePolicy.promptsEnabled())
     }
 
     @Test
