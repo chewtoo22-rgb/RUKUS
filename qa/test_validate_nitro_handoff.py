@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,9 +19,11 @@ class NitroHandoffValidatorTest(unittest.TestCase):
         self.apk.write_bytes(b"PK\x03\x04synthetic-apk")
         self.manifest = Path(self.tmp.name) / "handoff.json"
         self.base = {
-            "schema_version": 1,
+            "schema_version": 2,
             "producer": "NITRO",
             "consumer": "RUKUS",
+            "source_sha": "1" * 40,
+            "build_variant": "debug",
             "apk_path": "outputs/app-debug.apk",
             "apk_sha256": hashlib.sha256(self.apk.read_bytes()).hexdigest(),
             "apk_size_bytes": self.apk.stat().st_size,
@@ -49,13 +50,46 @@ class NitroHandoffValidatorTest(unittest.TestCase):
         self.assertFalse(result["apk_executed"])
         self.assertEqual(result["producer"], "NITRO")
         self.assertEqual(result["consumer"], "RUKUS")
+        self.assertEqual(result["source_sha"], "1" * 40)
+        self.assertEqual(result["build_variant"], "debug")
+
+    def test_release_variant_is_accepted_when_filename_matches(self):
+        release = self.root / "outputs" / "app-release.apk"
+        release.write_bytes(self.apk.read_bytes())
+        self.apk.unlink()
+        self.apk = release
+        self.base.update({
+            "build_variant": "release",
+            "apk_path": "outputs/app-release.apk",
+            "apk_sha256": hashlib.sha256(release.read_bytes()).hexdigest(),
+            "apk_size_bytes": release.stat().st_size,
+        })
+        self.write_manifest()
+        result = validate(self.manifest, self.root)
+        self.assertEqual(result["build_variant"], "release")
 
     def test_rejects_wrong_identity(self):
         self.assertRejected(producer="MUTINY")
         self.assertRejected(consumer="OTHER")
 
+    def test_rejects_legacy_schema_without_provenance(self):
+        self.assertRejected(schema_version=1)
+
+    def test_rejects_malformed_source_sha(self):
+        self.assertRejected(source_sha="A" * 40)
+        self.assertRejected(source_sha="1" * 39)
+        self.assertRejected(source_sha="g" * 40)
+
+    def test_rejects_unknown_build_variant(self):
+        self.assertRejected(build_variant="benchmark")
+        self.assertRejected(build_variant="Debug")
+
+    def test_rejects_variant_filename_mismatch(self):
+        self.assertRejected(build_variant="release")
+        self.assertRejected(apk_path="outputs/app-release.apk")
+
     def test_rejects_traversal_and_backslashes(self):
-        self.assertRejected(apk_path="../app.apk")
+        self.assertRejected(apk_path="../app-debug.apk")
         self.assertRejected(apk_path="outputs\\app-debug.apk")
 
     def test_rejects_symlink_apk(self):
