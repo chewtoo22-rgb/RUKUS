@@ -70,11 +70,13 @@ class DeviceReadyExecutor(context: Context) {
         )
     }
 
-    private fun isLaunchTargetReady(action: AgentAction): Boolean = when (action) {
-        is AgentAction.OpenApp -> appContext.packageManager
-            .getLaunchIntentForPackage(action.packageName) != null
-        is AgentAction.OpenAppByName -> InstalledAppLaunchResolver.resolve(appContext, action.appName) != null
-        else -> true
+    private fun isLaunchTargetReady(action: AgentAction): Boolean = LaunchTargetReadiness.probe {
+        when (action) {
+            is AgentAction.OpenApp -> appContext.packageManager
+                .getLaunchIntentForPackage(action.packageName) != null
+            is AgentAction.OpenAppByName -> InstalledAppLaunchResolver.resolve(appContext, action.appName) != null
+            else -> true
+        }
     }
 
     private companion object {
