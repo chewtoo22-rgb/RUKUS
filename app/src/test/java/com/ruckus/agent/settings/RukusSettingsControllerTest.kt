@@ -26,14 +26,25 @@ class RukusSettingsControllerTest {
     }
 
     @Test
-    fun completingOnboardingPersistsCurrentTutorialVersion() {
+    fun completingReadyOnboardingPersistsCurrentTutorialVersion() {
         val store = FakeStore()
         val controller = RukusSettingsController(store, currentTutorialVersion = 3)
-        val saved = controller.completeOnboarding()
+
+        val plan = controller.completeOnboardingIfReady(
+            OnboardingReadiness(
+                accessibilityReady = true,
+                writeSettingsReady = true,
+                shizukuReady = true,
+                safetyAcknowledged = true
+            )
+        )
+
+        assertTrue(plan.canComplete)
         assertFalse(controller.needsOnboarding())
-        assertTrue(saved.onboardingComplete)
-        assertEquals(3, saved.tutorialVersionSeen)
-        assertEquals(saved, store.persisted)
+        assertTrue(controller.snapshot().onboardingComplete)
+        assertEquals(3, controller.snapshot().tutorialVersionSeen)
+        assertEquals(controller.snapshot(), store.persisted)
+        assertEquals(1, store.saveCount)
     }
 
     @Test
