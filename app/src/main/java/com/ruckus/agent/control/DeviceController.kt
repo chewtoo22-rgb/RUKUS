@@ -9,6 +9,7 @@ import com.ruckus.agent.core.AgentAction
 import com.ruckus.agent.core.AppLaunchMatchPolicy
 import com.ruckus.agent.core.BrightnessMutationPolicy
 import com.ruckus.agent.core.InstalledAppLaunchResolver
+import com.ruckus.agent.core.MediaVolumeMutationPolicy
 import com.ruckus.agent.core.ObservedLaunchInventoryPolicy
 import com.ruckus.agent.core.SystemNavigationResult
 
@@ -63,8 +64,13 @@ class DeviceController(private val context: Context) {
             }
             is AgentAction.SetMediaVolume -> {
                 require(action.percent in 0..100)
-                val am=context.getSystemService(AudioManager::class.java); val max=am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                am.setStreamVolume(AudioManager.STREAM_MUSIC,(max*action.percent/100).coerceIn(0,max),0); "Media ${action.percent}%"
+                val audio = context.getSystemService(AudioManager::class.java)
+                val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                val target = MediaVolumeMutationPolicy.targetIndex(action.percent, max)
+                audio.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+                val actual = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+                MediaVolumeMutationPolicy.requireApplied(target, actual, action.percent)
+                "Media ${action.percent}%"
             }
             is AgentAction.RunApprovedShell -> error("Bounded Shizuku adapter not enabled yet")
         }
