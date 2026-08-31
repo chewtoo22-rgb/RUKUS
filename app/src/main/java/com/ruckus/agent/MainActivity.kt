@@ -31,6 +31,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 
+private const val SHIZUKU_PERMISSION_REQUEST_CODE = 1001
+
 class MainActivity : ComponentActivity() {
     private var capabilityRefreshGeneration by mutableIntStateOf(0)
     private val shizukuPermissionResultListener = Shizuku.OnRequestPermissionResultListener { requestCode, _ ->
@@ -75,10 +77,6 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         Shizuku.removeRequestPermissionResultListener(shizukuPermissionResultListener)
         super.onDestroy()
-    }
-
-    companion object {
-        private const val SHIZUKU_PERMISSION_REQUEST_CODE = 1001
     }
 }
 
