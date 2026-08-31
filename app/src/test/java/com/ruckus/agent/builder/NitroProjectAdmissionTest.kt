@@ -1,7 +1,7 @@
 package com.ruckus.agent.builder
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFailsWith
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class NitroProjectAdmissionTest {
@@ -31,43 +31,43 @@ class NitroProjectAdmissionTest {
     }
 
     @Test fun rejectsTraversalLikePackage() {
-        assertFailsWith<ProjectAdmissionException> {
+        assertThrows(ProjectAdmissionException::class.java) {
             NitroProjectAdmission.admit(spec(packageName = "com.example../escape"))
         }
     }
 
     @Test fun rejectsShellLikePackage() {
-        assertFailsWith<ProjectAdmissionException> {
+        assertThrows(ProjectAdmissionException::class.java) {
             NitroProjectAdmission.admit(spec(packageName = "com.example.app;rm"))
         }
     }
 
     @Test fun rejectsUppercasePackageSegments() {
-        assertFailsWith<ProjectAdmissionException> {
+        assertThrows(ProjectAdmissionException::class.java) {
             NitroProjectAdmission.admit(spec(packageName = "com.Example.app"))
         }
     }
 
     @Test fun rejectsControlCharacters() {
-        assertFailsWith<ProjectAdmissionException> {
+        assertThrows(ProjectAdmissionException::class.java) {
             NitroProjectAdmission.admit(spec(name = "Nitro\nInjected"))
         }
     }
 
     @Test fun rejectsDuplicateFeaturesAfterNormalization() {
-        assertFailsWith<ProjectAdmissionException> {
+        assertThrows(ProjectAdmissionException::class.java) {
             NitroProjectAdmission.admit(spec(features = listOf("Login", " login ")))
         }
     }
 
     @Test fun rejectsExcessFeatureCount() {
-        assertFailsWith<ProjectAdmissionException> {
+        assertThrows(ProjectAdmissionException::class.java) {
             NitroProjectAdmission.admit(spec(features = (1..65).map { "Feature $it" }))
         }
     }
 
     @Test fun rejectsEmptyFeatureAfterNormalization() {
-        assertFailsWith<ProjectAdmissionException> {
+        assertThrows(ProjectAdmissionException::class.java) {
             NitroProjectAdmission.admit(spec(features = listOf("   ")))
         }
     }
