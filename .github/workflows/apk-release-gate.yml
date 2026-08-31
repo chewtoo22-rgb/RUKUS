@@ -42,8 +42,14 @@ jobs:
           if-no-files-found: error
           path: gradle-unit-test.log
 
+      - name: APK archive validator tests
+        run: python3 qa/test_verify_apk_archive.py
+
       - name: Assemble release variant
         run: gradle :app:assembleRelease --stacktrace
+
+      - name: Verify APK archive integrity
+        run: python3 qa/verify-apk-archive.py app/build/outputs/apk/release/app-release-unsigned.apk
 
       - name: Verify release APK structure
         run: bash qa/verify-apk-release.sh app/build/outputs/apk/release/app-release-unsigned.apk
