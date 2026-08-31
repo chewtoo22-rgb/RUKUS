@@ -46,10 +46,8 @@ object OnboardingReadinessPolicy {
         }
         val optional = optionalSteps(readiness)
         val current = when {
-            !readiness.accessibilityReady -> OnboardingStep.ACCESSIBILITY
-            !readiness.writeSettingsReady -> OnboardingStep.WRITE_SETTINGS
-            !readiness.shizukuReady -> OnboardingStep.SHIZUKU
-            !readiness.safetyAcknowledged -> OnboardingStep.SAFETY
+            required.isNotEmpty() -> required.first()
+            optional.isNotEmpty() -> optional.first()
             else -> OnboardingStep.READY
         }
 
