@@ -67,6 +67,15 @@ object PlanSafetyPreflight {
                     reason = "Plan blocked before execution: ${decision.reason}"
                 )
                 Risk.CONFIRM -> {
+                    if (!ConfirmationRuntimePolicy.promptsEnabled()) {
+                        return PlanSafetyPreflightDecision(
+                            allowed = false,
+                            actionIndex = index,
+                            action = action,
+                            needsConfirmation = false,
+                            reason = "Confirmation-required actions are disabled in RUKUS settings; re-enable confirmation prompts before attempting this action"
+                        )
+                    }
                     val expectedApproval = approvalFingerprint(action)
                     if (!approved || approvedActionFingerprint != expectedApproval) {
                         val detail = if (approved && approvedActionFingerprint != null) {
