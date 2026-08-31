@@ -6,20 +6,23 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 import stat
 import sys
 from pathlib import Path, PurePosixPath
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MAX_APK_BYTES = 1 << 30
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+SOURCE_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$")
+ALLOWED_BUILD_VARIANTS = {"debug", "release"}
 ALLOWED_KEYS = {
     "schema_version",
     "producer",
     "consumer",
+    "source_sha",
+    "build_variant",
     "apk_path",
     "apk_sha256",
     "apk_size_bytes",
@@ -116,7 +119,19 @@ def validate(manifest_path: Path, root: Path) -> dict:
     if manifest["producer"] != "NITRO" or manifest["consumer"] != "RUKUS":
         raise ValidationError("handoff identity must be exactly NITRO -> RUKUS")
 
+    source_sha = manifest["source_sha"]
+    if not isinstance(source_sha, str) or not SOURCE_SHA_RE.fullmatch(source_sha):
+        raise ValidationError("source_sha must be a lowercase 40-character Git commit SHA")
+
+    build_variant = manifest["build_variant"]
+    if build_variant not in ALLOWED_BUILD_VARIANTS:
+        raise ValidationError("build_variant must be exactly debug or release")
+
     relative = _validate_relative_apk_path(manifest["apk_path"])
+    expected_suffix = f"-{build_variant}.apk"
+    if not relative.name.endswith(expected_suffix):
+        raise ValidationError("apk_path filename does not match build_variant")
+
     apk = _resolve_regular_apk(root, relative)
     actual_size = apk.stat().st_size
     declared_size = manifest["apk_size_bytes"]
@@ -140,6 +155,8 @@ def validate(manifest_path: Path, root: Path) -> dict:
         "schema_version": SCHEMA_VERSION,
         "producer": "NITRO",
         "consumer": "RUKUS",
+        "source_sha": source_sha,
+        "build_variant": build_variant,
         "apk_path": relative.as_posix(),
         "apk_sha256": actual_hash,
         "apk_size_bytes": actual_size,
