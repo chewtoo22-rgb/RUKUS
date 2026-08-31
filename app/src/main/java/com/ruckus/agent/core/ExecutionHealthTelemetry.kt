@@ -1,5 +1,6 @@
 package com.ruckus.agent.core
 
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /** Local-only aggregate release-health counters. No request/action payloads or timestamps. */
@@ -15,6 +16,7 @@ data class ExecutionHealthSnapshot(
 )
 
 object ExecutionHealthTelemetry {
+    private val enabled = AtomicBoolean(true)
     private val totalEvents = AtomicLong()
     private val completedTasks = AtomicLong()
     private val verifiedActions = AtomicLong()
@@ -24,7 +26,15 @@ object ExecutionHealthTelemetry {
     private val verificationFailures = AtomicLong()
     private val terminalFailures = AtomicLong()
 
+    fun setEnabled(value: Boolean) {
+        enabled.set(value)
+    }
+
+    fun isEnabled(): Boolean = enabled.get()
+
     fun record(outcome: String) {
+        if (!enabled.get()) return
+
         totalEvents.incrementAndGet()
         when {
             outcome.startsWith("TASK_COMPLETE:") -> completedTasks.incrementAndGet()
@@ -46,6 +56,7 @@ object ExecutionHealthTelemetry {
     )
 
     internal fun resetForTests() {
+        enabled.set(true)
         totalEvents.set(0); completedTasks.set(0); verifiedActions.set(0); recoveries.set(0)
         blockedActions.set(0); confirmationWaits.set(0); verificationFailures.set(0); terminalFailures.set(0)
     }
