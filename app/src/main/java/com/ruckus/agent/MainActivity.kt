@@ -31,11 +31,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 
+private const val SHIZUKU_PERMISSION_REQUEST_CODE = 1001
+
 class MainActivity : ComponentActivity() {
     private var capabilityRefreshGeneration by mutableIntStateOf(0)
+    private val shizukuPermissionResultListener = Shizuku.OnRequestPermissionResultListener { requestCode, _ ->
+        if (requestCode == SHIZUKU_PERMISSION_REQUEST_CODE) {
+            capabilityRefreshGeneration++
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Shizuku.addRequestPermissionResultListener(shizukuPermissionResultListener)
         val executor = DeviceReadyExecutor(this)
         val settingsController = RukusSettingsController(SharedPreferencesRukusSettingsStore(this))
         setContent {
@@ -64,6 +72,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         capabilityRefreshGeneration++
+    }
+
+    override fun onDestroy() {
+        Shizuku.removeRequestPermissionResultListener(shizukuPermissionResultListener)
+        super.onDestroy()
     }
 }
 
@@ -164,7 +177,7 @@ private fun OnboardingGate(
         if (shizuku?.binderAvailable == true && !shizukuReady) {
             OutlinedButton(
                 onClick = {
-                    runCatching { Shizuku.requestPermission(1001) }
+                    runCatching { Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE) }
                     refresh++
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -368,7 +381,7 @@ private fun Dashboard(
         if (shizuku?.binderAvailable == true && shizuku.permissionGranted.not()) {
             OutlinedButton(
                 onClick = {
-                    runCatching { Shizuku.requestPermission(1001) }
+                    runCatching { Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE) }
                     refresh++
                 },
                 modifier = Modifier.fillMaxWidth(),

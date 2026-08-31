@@ -19,7 +19,27 @@ jobs:
       - name: Validate device smoke runner
         run: bash -n qa/run-device-smoke.sh
       - name: Unit tests
-        run: gradle :app:testDebugUnitTest --stacktrace
+        shell: bash
+        run: |
+          set +e
+          gradle :app:testDebugUnitTest --stacktrace 2>&1 | tee gradle-debug-unit-test.log
+          status=${PIPESTATUS[0]}
+          if [[ $status -ne 0 ]]; then
+            {
+              echo '## Debug unit-test failure tail'
+              echo '```text'
+              tail -n 160 gradle-debug-unit-test.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit "$status"
+          fi
+      - name: Upload debug unit-test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-debug-unit-test-diagnostics
+          if-no-files-found: error
+          path: gradle-debug-unit-test.log
       - name: Build APK
         run: gradle :app:assembleDebug --stacktrace
       - name: Build instrumentation test APK
