@@ -1,0 +1,38 @@
+name: NITRO Handoff Integrity
+
+on:
+  pull_request:
+    paths:
+      - 'qa/validate_nitro_handoff.py'
+      - 'qa/test_validate_nitro_handoff.py'
+      - '.github/workflows/nitro-handoff-integrity.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'qa/validate_nitro_handoff.py'
+      - 'qa/test_validate_nitro_handoff.py'
+      - '.github/workflows/nitro-handoff-integrity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile validator
+        run: python -m py_compile qa/validate_nitro_handoff.py qa/test_validate_nitro_handoff.py
+      - name: Run handoff regression suite
+        working-directory: qa
+        run: python -m unittest -v test_validate_nitro_handoff.py
+      - name: Enforce non-executing validation boundary
+        run: |
+          ! grep -Eq 'subprocess|os\.system|Popen|exec\(|eval\(' qa/validate_nitro_handoff.py
+          grep -F 'apk_executed": False' qa/validate_nitro_handoff.py
+          grep -F 'producer"] != "NITRO"' qa/validate_nitro_handoff.py
+          grep -F 'consumer"] != "RUKUS"' qa/validate_nitro_handoff.py
