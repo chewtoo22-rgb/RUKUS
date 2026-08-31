@@ -32,6 +32,8 @@ import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 
 class MainActivity : ComponentActivity() {
+    private var capabilityRefreshGeneration by mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val executor = DeviceReadyExecutor(this)
@@ -42,6 +44,7 @@ class MainActivity : ComponentActivity() {
                     RukusRoot(
                         executor = executor,
                         settingsController = settingsController,
+                        capabilityRefreshGeneration = capabilityRefreshGeneration,
                         canWriteSettings = { Settings.System.canWrite(this) },
                         onAccessibility = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
                         onWriteSettings = {
@@ -57,12 +60,18 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        capabilityRefreshGeneration++
+    }
 }
 
 @Composable
 private fun RukusRoot(
     executor: DeviceReadyExecutor,
     settingsController: RukusSettingsController,
+    capabilityRefreshGeneration: Int,
     canWriteSettings: () -> Boolean,
     onAccessibility: () -> Unit,
     onWriteSettings: () -> Unit
@@ -72,19 +81,26 @@ private fun RukusRoot(
     if (!onboardingComplete) {
         OnboardingGate(
             settingsController = settingsController,
+            capabilityRefreshGeneration = capabilityRefreshGeneration,
             canWriteSettings = canWriteSettings,
             onAccessibility = onAccessibility,
             onWriteSettings = onWriteSettings,
             onCompleted = { onboardingComplete = true }
         )
     } else {
-        Dashboard(executor, onAccessibility, onWriteSettings)
+        Dashboard(
+            executor = executor,
+            capabilityRefreshGeneration = capabilityRefreshGeneration,
+            onAccessibility = onAccessibility,
+            onWriteSettings = onWriteSettings
+        )
     }
 }
 
 @Composable
 private fun OnboardingGate(
     settingsController: RukusSettingsController,
+    capabilityRefreshGeneration: Int,
     canWriteSettings: () -> Boolean,
     onAccessibility: () -> Unit,
     onWriteSettings: () -> Unit,
@@ -94,9 +110,9 @@ private fun OnboardingGate(
     var safetyAcknowledged by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Complete the required setup before RUKUS can execute commands.") }
 
-    val accessibilityReady = remember(refresh) { RuckusAccessibilityService.instance != null }
-    val writeSettingsReady = remember(refresh) { runCatching { canWriteSettings() }.getOrDefault(false) }
-    val shizuku = remember(refresh) { runCatching { ShizukuStateReader.read() }.getOrNull() }
+    val accessibilityReady = remember(refresh, capabilityRefreshGeneration) { RuckusAccessibilityService.instance != null }
+    val writeSettingsReady = remember(refresh, capabilityRefreshGeneration) { runCatching { canWriteSettings() }.getOrDefault(false) }
+    val shizuku = remember(refresh, capabilityRefreshGeneration) { runCatching { ShizukuStateReader.read() }.getOrNull() }
     val shizukuReady = shizuku?.permissionGranted == true
     val readiness = OnboardingReadiness(
         accessibilityReady = accessibilityReady,
@@ -216,14 +232,19 @@ private fun SetupStatus(title: String, ready: Boolean, required: Boolean, detail
 }
 
 @Composable
-private fun Dashboard(executor: DeviceReadyExecutor, onAccessibility: () -> Unit, onWriteSettings: () -> Unit) {
+private fun Dashboard(
+    executor: DeviceReadyExecutor,
+    capabilityRefreshGeneration: Int,
+    onAccessibility: () -> Unit,
+    onWriteSettings: () -> Unit
+) {
     var command by remember { mutableStateOf("") }
     var result by remember { mutableStateOf("Ready. Try: open Spotify, scroll down, inspect screen, tap Allow, volume 30") }
     var session by remember { mutableStateOf(executor.lastSession()) }
     var refresh by remember { mutableIntStateOf(0) }
     var isExecuting by remember { mutableStateOf(false) }
     val executionScope = rememberCoroutineScope()
-    val shizuku = remember(refresh) { runCatching { ShizukuStateReader.read() }.getOrNull() }
+    val shizuku = remember(refresh, capabilityRefreshGeneration) { runCatching { ShizukuStateReader.read() }.getOrNull() }
 
     fun show(report: ExecutionReport) {
         result = if (report.ok) "✓ ${report.message}" else if (report.needsConfirmation) "CONFIRM: ${report.message}" else "✕ ${report.message}"
