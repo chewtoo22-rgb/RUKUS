@@ -15,7 +15,7 @@ import com.ruckus.agent.core.ObservedLaunchInventoryPolicy
 import com.ruckus.agent.core.SystemNavigationResult
 
 class DeviceController(private val context: Context) {
-    fun execute(action: AgentAction): Result<String> = runCatching {
+    fun execute(action: AgentAction): Result<String> = DeviceExecutionBoundary.capture {
         when (action) {
             is AgentAction.OpenApp -> {
                 val intent = context.packageManager.getLaunchIntentForPackage(action.packageName)
