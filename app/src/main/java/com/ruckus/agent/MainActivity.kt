@@ -13,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import com.ruckus.agent.control.RuckusAccessibilityService
 import com.ruckus.agent.control.ShizukuStateReader
@@ -103,6 +105,7 @@ private fun RukusRoot(
     } else {
         Dashboard(
             executor = executor,
+            settingsController = settingsController,
             capabilityRefreshGeneration = capabilityRefreshGeneration,
             onAccessibility = onAccessibility,
             onWriteSettings = onWriteSettings
@@ -213,7 +216,11 @@ private fun OnboardingGate(
                 if (completionPlan.canComplete) {
                     onCompleted()
                 } else {
-                    message = "Setup is not complete. Required capabilities still need attention."
+                    message = if (OnboardingStep.PERSISTENCE in completionPlan.requiredBlockers) {
+                        "Setup is ready, but RUKUS could not save onboarding state. Check app storage and try again."
+                    } else {
+                        "Setup is not complete. Required capabilities still need attention."
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth(),
@@ -247,6 +254,7 @@ private fun SetupStatus(title: String, ready: Boolean, required: Boolean, detail
 @Composable
 private fun Dashboard(
     executor: DeviceReadyExecutor,
+    settingsController: RukusSettingsController,
     capabilityRefreshGeneration: Int,
     onAccessibility: () -> Unit,
     onWriteSettings: () -> Unit
@@ -256,12 +264,18 @@ private fun Dashboard(
     var session by remember { mutableStateOf(executor.lastSession()) }
     var refresh by remember { mutableIntStateOf(0) }
     var isExecuting by remember { mutableStateOf(false) }
+    var appSettings by remember { mutableStateOf(settingsController.snapshot()) }
+    var settingsMessage by remember { mutableStateOf<String?>(null) }
     val executionScope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
     val shizuku = remember(refresh, capabilityRefreshGeneration) { runCatching { ShizukuStateReader.read() }.getOrNull() }
 
     fun show(report: ExecutionReport) {
         result = if (report.ok) "✓ ${report.message}" else if (report.needsConfirmation) "CONFIRM: ${report.message}" else "✕ ${report.message}"
         session = executor.lastSession()
+        if (appSettings.hapticsEnabled) {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
     }
 
     fun launchExecution(block: () -> ExecutionReport) {
@@ -286,6 +300,16 @@ private fun Dashboard(
 
     fun resume(approved: Boolean = false) {
         launchExecution { executor.resumeLast(approved) }
+    }
+
+    fun updateSetting(label: String, requested: Boolean, apply: () -> com.ruckus.agent.settings.RukusSettings, value: (com.ruckus.agent.settings.RukusSettings) -> Boolean) {
+        val next = apply()
+        appSettings = next
+        settingsMessage = if (value(next) == requested) {
+            "$label ${if (requested) "enabled" else "disabled"}."
+        } else {
+            "Could not save $label setting. Previous value was preserved."
+        }
     }
 
     Column(
@@ -375,9 +399,40 @@ private fun Dashboard(
             }
         }
 
+        HorizontalDivider()
+        Text("RUKUS SETTINGS", style = MaterialTheme.typography.titleLarge)
+        SettingToggle(
+            title = "Execution telemetry",
+            detail = "Collect bounded local execution-health events for reliability diagnostics.",
+            checked = appSettings.telemetryEnabled,
+            enabled = !isExecuting,
+            onCheckedChange = { requested ->
+                updateSetting("Telemetry", requested, { settingsController.setTelemetryEnabled(requested) }) { it.telemetryEnabled }
+            }
+        )
+        SettingToggle(
+            title = "Sensitive-action confirmations",
+            detail = "Require confirmation prompts when the runtime policy marks an action as sensitive.",
+            checked = appSettings.confirmationsEnabled,
+            enabled = !isExecuting,
+            onCheckedChange = { requested ->
+                updateSetting("Confirmations", requested, { settingsController.setConfirmationsEnabled(requested) }) { it.confirmationsEnabled }
+            }
+        )
+        SettingToggle(
+            title = "Haptic feedback",
+            detail = "Provide tactile feedback when an execution attempt completes.",
+            checked = appSettings.hapticsEnabled,
+            enabled = !isExecuting,
+            onCheckedChange = { requested ->
+                updateSetting("Haptics", requested, { settingsController.setHapticsEnabled(requested) }) { it.hapticsEnabled }
+            }
+        )
+        settingsMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onAccessibility, Modifier.weight(1f), enabled = !isExecuting) { Text("Accessibility") }
-            OutlinedButton(onWriteSettings, Modifier.weight(1f), enabled = !isExecuting) { Text("Settings") }
+            OutlinedButton(onWriteSettings, Modifier.weight(1f), enabled = !isExecuting) { Text("System access") }
         }
         if (shizuku?.binderAvailable == true && shizuku.permissionGranted.not()) {
             OutlinedButton(
@@ -390,10 +445,40 @@ private fun Dashboard(
             ) { Text("Grant Shizuku") }
         }
         TextButton(
-            onClick = { refresh++; session = executor.lastSession() },
+            onClick = {
+                refresh++
+                session = executor.lastSession()
+                appSettings = settingsController.snapshot()
+            },
             modifier = Modifier.fillMaxWidth(),
             enabled = !isExecuting
         ) { Text("Refresh status") }
+    }
+}
+
+@Composable
+private fun SettingToggle(
+    title: String,
+    detail: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(detail, style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                enabled = enabled
+            )
+        }
     }
 }
 
