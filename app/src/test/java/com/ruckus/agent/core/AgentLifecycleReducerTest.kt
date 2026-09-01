@@ -65,9 +65,74 @@ class AgentLifecycleReducerTest {
     }
 
     @Test
+    fun `cancellation before execution terminates immediately`() {
+        for (state in listOf(
+            AgentLifecycleState.UNDERSTANDING,
+            AgentLifecycleState.PLANNING,
+            AgentLifecycleState.AWAITING_CONFIRMATION,
+        )) {
+            assertEquals(
+                AgentLifecycleState.CANCELLED,
+                AgentLifecycleReducer.transition(state, AgentLifecycleEvent.CANCEL_REQUESTED),
+            )
+        }
+    }
+
+    @Test
+    fun `cancellation after side effects begin requires explicit cleanup`() {
+        for (state in listOf(
+            AgentLifecycleState.EXECUTING,
+            AgentLifecycleState.VERIFYING,
+            AgentLifecycleState.RECOVERING,
+        )) {
+            val cancelling = AgentLifecycleReducer.transition(state, AgentLifecycleEvent.CANCEL_REQUESTED)
+            assertEquals(AgentLifecycleState.CANCELLING, cancelling)
+            assertFalse(cancelling.isTerminal)
+            assertTrue(cancelling.isActive)
+            assertEquals(
+                AgentLifecycleState.CANCELLED,
+                AgentLifecycleReducer.transition(cancelling, AgentLifecycleEvent.CANCELLATION_COMPLETE),
+            )
+            assertEquals(
+                AgentLifecycleState.FAILED,
+                AgentLifecycleReducer.transition(cancelling, AgentLifecycleEvent.CANCELLATION_FAILED),
+            )
+        }
+    }
+
+    @Test
+    fun `cancelling cannot be acknowledged or restarted before cleanup resolves`() {
+        assertIllegal(AgentLifecycleState.CANCELLING, AgentLifecycleEvent.TERMINAL_ACKNOWLEDGED)
+        assertIllegal(AgentLifecycleState.CANCELLING, AgentLifecycleEvent.REQUEST_ACCEPTED)
+        assertIllegal(AgentLifecycleState.CANCELLING, AgentLifecycleEvent.CANCEL_REQUESTED)
+    }
+
+    @Test
+    fun `cancelled is terminal and requires acknowledgement before reuse`() {
+        assertTrue(AgentLifecycleState.CANCELLED.isTerminal)
+        assertFalse(AgentLifecycleState.CANCELLED.isActive)
+        assertIllegal(AgentLifecycleState.CANCELLED, AgentLifecycleEvent.REQUEST_ACCEPTED)
+        assertEquals(
+            AgentLifecycleState.IDLE,
+            AgentLifecycleReducer.transition(
+                AgentLifecycleState.CANCELLED,
+                AgentLifecycleEvent.TERMINAL_ACKNOWLEDGED,
+            ),
+        )
+    }
+
+    @Test
+    fun `idle rejects cancellation`() {
+        assertIllegal(AgentLifecycleState.IDLE, AgentLifecycleEvent.CANCEL_REQUESTED)
+        assertIllegal(AgentLifecycleState.IDLE, AgentLifecycleEvent.CANCELLATION_COMPLETE)
+        assertIllegal(AgentLifecycleState.IDLE, AgentLifecycleEvent.CANCELLATION_FAILED)
+    }
+
+    @Test
     fun `terminal states accept only acknowledgement back to idle`() {
         for (state in listOf(
             AgentLifecycleState.SUCCEEDED,
+            AgentLifecycleState.CANCELLED,
             AgentLifecycleState.BLOCKED,
             AgentLifecycleState.FAILED,
         )) {
@@ -90,6 +155,7 @@ class AgentLifecycleReducerTest {
     fun `active classification excludes idle and terminal states`() {
         assertFalse(AgentLifecycleState.IDLE.isActive)
         assertFalse(AgentLifecycleState.SUCCEEDED.isActive)
+        assertFalse(AgentLifecycleState.CANCELLED.isActive)
         assertFalse(AgentLifecycleState.BLOCKED.isActive)
         assertFalse(AgentLifecycleState.FAILED.isActive)
         assertTrue(AgentLifecycleState.UNDERSTANDING.isActive)
@@ -97,6 +163,7 @@ class AgentLifecycleReducerTest {
         assertTrue(AgentLifecycleState.EXECUTING.isActive)
         assertTrue(AgentLifecycleState.VERIFYING.isActive)
         assertTrue(AgentLifecycleState.RECOVERING.isActive)
+        assertTrue(AgentLifecycleState.CANCELLING.isActive)
     }
 
     @Test
