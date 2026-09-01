@@ -29,10 +29,10 @@ class DurableCheckpointPublisherTest {
     }
 
     @Test
-    fun `does not publish when persistence fails`() {
+    fun `persistence failure is typed and does not publish`() {
         val events = mutableListOf<String>()
 
-        assertThrows(IllegalStateException::class.java) {
+        assertThrows(CheckpointPersistenceException::class.java) {
             DurableCheckpointPublisher.publish(
                 state = state,
                 persist = {
