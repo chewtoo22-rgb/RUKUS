@@ -6,6 +6,7 @@ import android.content.Intent
 import android.media.AudioManager
 import android.provider.Settings
 import com.ruckus.agent.core.AgentAction
+import com.ruckus.agent.core.AndroidQueryPolicy
 import com.ruckus.agent.core.AppLaunchMatchPolicy
 import com.ruckus.agent.core.BrightnessMutationPolicy
 import com.ruckus.agent.core.InstalledAppLaunchResolver
@@ -85,7 +86,9 @@ class DeviceController(private val context: Context) {
                 "node[text=${escapeObservation(label)};clickable=${node.clickable};enabled=${node.enabled};editable=${node.editable};sensitive=${node.sensitive};focused=${node.focused};scrollable=${node.scrollable}]"
             }
         val launcherQuery = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val launchCandidates = context.packageManager.queryIntentActivities(launcherQuery, 0).mapNotNull { info ->
+        val launchCandidates = AndroidQueryPolicy.readOrEmpty {
+            context.packageManager.queryIntentActivities(launcherQuery, 0)
+        }.mapNotNull { info ->
             val packageName = info.activityInfo?.packageName?.trim().orEmpty()
             val label = runCatching { info.loadLabel(context.packageManager).toString().trim() }.getOrDefault("")
             if (packageName.isBlank() || label.isBlank()) null
