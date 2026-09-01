@@ -57,7 +57,7 @@ class TaskSessionStore(context: Context) {
     }
 
     fun load(): PersistedTaskSession? {
-        val raw = prefs.getString(KEY, null) ?: return null
+        val raw = SafePreferenceRead.stringOrNull { prefs.getString(KEY, null) } ?: return null
         return runCatching {
             val json = JSONObject(raw)
             val session = PersistedTaskSession(
