@@ -21,23 +21,23 @@ class RuckusExecutor(context:Context){
 
     fun lastSession(): PersistedTaskSession? = sessions.load()
 
-    fun run(request:String, approved:Boolean=false):ExecutionReport {
+    fun run(request:String, approved:Boolean=false):ExecutionReport = CheckpointFailureBoundary.execute {
         activePlanFingerprint=null
         val plan=CommandPlanner.plan(request)
-        if(plan.actions.isEmpty()) return failEarly(request,"No executable command",0)
-        if(plan.rejectedParts.isNotEmpty()) return failEarly(request,"I understood part of that, but not: ${plan.rejectedParts.joinToString()}",plan.actions.size)
-        return executePlan(request,plan,0,approved,false)
+        if(plan.actions.isEmpty()) return@execute failEarly(request,"No executable command",0)
+        if(plan.rejectedParts.isNotEmpty()) return@execute failEarly(request,"I understood part of that, but not: ${plan.rejectedParts.joinToString()}",plan.actions.size)
+        executePlan(request,plan,0,approved,false)
     }
 
     /** Resume from the first unverified persisted checkpoint instead of replaying verified steps. */
-    fun resumeLast(approved:Boolean=false):ExecutionReport {
+    fun resumeLast(approved:Boolean=false):ExecutionReport = CheckpointFailureBoundary.execute {
         activePlanFingerprint=null
-        val session=sessions.load() ?: return ExecutionReport(false,"No saved task session")
+        val session=sessions.load() ?: return@execute ExecutionReport(false,"No saved task session")
         val plan=CommandPlanner.plan(session.request)
         val decision=ResumePolicy.decide(session,plan)
-        if(!decision.allowed) return ExecutionReport(false,decision.reason,completedSteps=session.currentStep,totalSteps=session.totalSteps)
+        if(!decision.allowed) return@execute ExecutionReport(false,decision.reason,completedSteps=session.currentStep,totalSteps=session.totalSteps)
         ActionAudit.record(session.request,null,"RESUME: ${decision.reason} step=${decision.startStep+1}/${plan.actions.size}")
-        return if(session.status==AgentTaskState.Status.EXECUTING) reconcileInFlight(session,plan,approved)
+        if(session.status==AgentTaskState.Status.EXECUTING) reconcileInFlight(session,plan,approved)
         else executePlan(session.request,plan,decision.startStep,approved,true)
     }
 

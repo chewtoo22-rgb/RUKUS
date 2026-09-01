@@ -1,5 +1,8 @@
 package com.ruckus.agent.core
 
+internal class CheckpointPersistenceException(cause: RuntimeException) :
+    IllegalStateException("Durable task checkpoint unavailable", cause)
+
 /**
  * Preserves the executor's crash-recovery invariant: a state is not observable in memory
  * until the matching checkpoint has been durably accepted by storage.
@@ -10,7 +13,11 @@ internal object DurableCheckpointPublisher {
         persist: (AgentTaskState) -> Unit,
         publishInMemory: (AgentTaskState) -> Unit
     ) {
-        persist(state)
+        try {
+            persist(state)
+        } catch (failure: RuntimeException) {
+            throw CheckpointPersistenceException(failure)
+        }
         publishInMemory(state)
     }
 }
