@@ -1,5 +1,7 @@
 package com.ruckus.agent.core
 
+import com.ruckus.agent.control.ShizukuState
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -84,5 +86,35 @@ class DeviceCapabilitySnapshotTest {
     fun writeSettingsSamplingPreservesGrantedAndDeniedStates() {
         assertTrue(DeviceCapabilityReader.safeWriteSettingsRead { true })
         assertFalse(DeviceCapabilityReader.safeWriteSettingsRead { false })
+    }
+
+    @Test(expected = AssertionError::class)
+    fun writeSettingsSamplingDoesNotHideFatalErrors() {
+        DeviceCapabilityReader.safeWriteSettingsRead {
+            throw AssertionError("fatal settings failure")
+        }
+    }
+
+    @Test
+    fun shizukuSamplingFailureFailsClosed() {
+        assertEquals(
+            null,
+            DeviceCapabilityReader.safeShizukuStateRead {
+                throw SecurityException("binder permission query unavailable")
+            }
+        )
+    }
+
+    @Test
+    fun shizukuSamplingPreservesValidState() {
+        val state = ShizukuState(binderAvailable = true, permissionGranted = false)
+        assertEquals(state, DeviceCapabilityReader.safeShizukuStateRead { state })
+    }
+
+    @Test(expected = AssertionError::class)
+    fun shizukuSamplingDoesNotHideFatalErrors() {
+        DeviceCapabilityReader.safeShizukuStateRead {
+            throw AssertionError("fatal binder failure")
+        }
     }
 }
