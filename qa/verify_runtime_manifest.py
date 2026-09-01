@@ -26,6 +26,7 @@ EXPECTED_REQUESTED_PERMISSIONS = {
     SHIZUKU_API_PERMISSION,
     DYNAMIC_RECEIVER_PERMISSION,
 }
+SIGNATURE_PROTECTION_LEVELS = {"signature", "0x2"}
 RESOURCE_ID = re.compile(r"^@(?:ref/)?(?:0x)?[0-9a-fA-F]+$")
 ACCESSIBILITY_RESOURCE = re.compile(
     r"^@(?:(?:com\.ruckus\.agent):)?xml/ruckus_accessibility_service$"
@@ -107,7 +108,7 @@ def validate_dynamic_receiver_permission(root):
         "AndroidX dynamic receiver permission declaration must appear exactly once",
     )
     require(
-        attr(matches[0], "protectionLevel") == "signature",
+        attr(matches[0], "protectionLevel") in SIGNATURE_PROTECTION_LEVELS,
         "AndroidX dynamic receiver permission must remain signature-protected",
     )
 
