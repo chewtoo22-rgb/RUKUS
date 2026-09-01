@@ -37,15 +37,7 @@ class RukusSettingsControllerTest {
     fun completingReadyOnboardingPersistsCurrentTutorialVersion() {
         val store = FakeStore()
         val controller = RukusSettingsController(store, currentTutorialVersion = 3)
-
-        val plan = controller.completeOnboardingIfReady(
-            OnboardingReadiness(
-                accessibilityReady = true,
-                writeSettingsReady = true,
-                shizukuReady = true,
-                safetyAcknowledged = true
-            )
-        )
+        val plan = controller.completeOnboardingIfReady(ready())
 
         assertTrue(plan.canComplete)
         assertFalse(controller.needsOnboarding())
@@ -56,17 +48,28 @@ class RukusSettingsControllerTest {
     }
 
     @Test
+    fun onboardingPersistenceFailureStaysIncompleteAndReturnsBlocker() {
+        val store = FakeStore(failWrites = true)
+        val controller = RukusSettingsController(store, currentTutorialVersion = 3)
+        val before = controller.snapshot()
+
+        val plan = controller.completeOnboardingIfReady(ready())
+
+        assertFalse(plan.canComplete)
+        assertEquals(OnboardingStep.PERSISTENCE, plan.currentStep)
+        assertEquals(listOf(OnboardingStep.PERSISTENCE), plan.requiredBlockers)
+        assertTrue(controller.needsOnboarding())
+        assertEquals(before, controller.snapshot())
+        assertEquals(before, store.persisted)
+        assertEquals(1, store.saveCount)
+    }
+
+    @Test
     fun readinessGateRefusesPersistenceWithoutAccessibility() {
         val store = FakeStore()
         val controller = RukusSettingsController(store, currentTutorialVersion = 2)
-
         val plan = controller.completeOnboardingIfReady(
-            OnboardingReadiness(
-                accessibilityReady = false,
-                writeSettingsReady = true,
-                shizukuReady = true,
-                safetyAcknowledged = true
-            )
+            ready().copy(accessibilityReady = false)
         )
 
         assertFalse(plan.canComplete)
@@ -80,14 +83,8 @@ class RukusSettingsControllerTest {
     fun readinessGateRefusesPersistenceWithoutSafetyAcknowledgement() {
         val store = FakeStore()
         val controller = RukusSettingsController(store)
-
         val plan = controller.completeOnboardingIfReady(
-            OnboardingReadiness(
-                accessibilityReady = true,
-                writeSettingsReady = true,
-                shizukuReady = true,
-                safetyAcknowledged = false
-            )
+            ready().copy(safetyAcknowledged = false)
         )
 
         assertFalse(plan.canComplete)
@@ -100,14 +97,8 @@ class RukusSettingsControllerTest {
     fun optionalCapabilitiesDoNotStrandSupportedCoreCommands() {
         val store = FakeStore()
         val controller = RukusSettingsController(store, currentTutorialVersion = 4)
-
         val plan = controller.completeOnboardingIfReady(
-            OnboardingReadiness(
-                accessibilityReady = true,
-                writeSettingsReady = false,
-                shizukuReady = false,
-                safetyAcknowledged = true
-            )
+            ready().copy(writeSettingsReady = false, shizukuReady = false)
         )
 
         assertTrue(plan.canComplete)
@@ -139,9 +130,7 @@ class RukusSettingsControllerTest {
         val controller = RukusSettingsController(store)
         val before = controller.snapshot()
         assertTrue(ExecutionHealthTelemetry.isEnabled())
-
         runCatching { controller.setTelemetryEnabled(false) }
-
         assertEquals(before, controller.snapshot())
         assertEquals(before, store.persisted)
         assertTrue(ExecutionHealthTelemetry.isEnabled())
@@ -153,9 +142,7 @@ class RukusSettingsControllerTest {
         val controller = RukusSettingsController(store)
         val before = controller.snapshot()
         assertTrue(ConfirmationRuntimePolicy.promptsEnabled())
-
         runCatching { controller.setConfirmationsEnabled(false) }
-
         assertEquals(before, controller.snapshot())
         assertEquals(before, store.persisted)
         assertTrue(ConfirmationRuntimePolicy.promptsEnabled())
@@ -176,6 +163,13 @@ class RukusSettingsControllerTest {
         val controller = RukusSettingsController(store, currentTutorialVersion = 2)
         assertTrue(controller.needsOnboarding())
     }
+
+    private fun ready() = OnboardingReadiness(
+        accessibilityReady = true,
+        writeSettingsReady = true,
+        shizukuReady = true,
+        safetyAcknowledged = true
+    )
 
     private class FakeStore(
         initial: RukusSettings = RukusSettings(),
