@@ -1,0 +1,44 @@
+name: RUKUS Permission Readiness Contract
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/ruckus/agent/control/PermissionReadiness.kt'
+      - 'app/src/test/java/com/ruckus/agent/control/PermissionReadinessTest.kt'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/permission-readiness-contract.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'app/src/main/java/com/ruckus/agent/control/PermissionReadiness.kt'
+      - 'app/src/test/java/com/ruckus/agent/control/PermissionReadinessTest.kt'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/permission-readiness-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  permission-readiness-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Run focused permission readiness regressions
+        run: gradle :app:testDebugUnitTest --tests 'com.ruckus.agent.control.PermissionReadinessTest' --stacktrace
+      - name: Enforce pure admission boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          file='app/src/main/java/com/ruckus/agent/control/PermissionReadiness.kt'
+          ! grep -Eq 'android\.|androidx\.|Shizuku\.|AccessibilityService|Settings\.System|ProcessBuilder|Runtime\.getRuntime|exec\(' "$file"
+          grep -F 'STALE_OBSERVATION' "$file"
+          grep -F 'MAX_ALLOWED_AGE_MS' "$file"
