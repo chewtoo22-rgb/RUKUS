@@ -124,3 +124,28 @@ jobs:
             app/build/outputs/apk/release/SHA256SUMS.txt
             app/build/outputs/apk/release/evidence/AndroidManifest.xml
             app/build/outputs/apk/release/evidence/release-gate.log
+
+      - name: Assemble installable test APK
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Verify installable test APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          [[ -n "$APKSIGNER" && -x "$APKSIGNER" ]] || {
+            echo "apksigner not found" >&2
+            exit 3
+          }
+          "$APKSIGNER" verify --verbose "$APK"
+          sha256sum "$APK" | tee app/build/outputs/apk/debug/SHA256SUMS.txt
+
+      - name: Upload installable test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUKUS-test-installable
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/SHA256SUMS.txt
