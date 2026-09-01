@@ -3,6 +3,7 @@ package com.ruckus.agent.core
 import android.content.Context
 import android.provider.Settings
 import com.ruckus.agent.control.RuckusAccessibilityService
+import com.ruckus.agent.control.ShizukuState
 import com.ruckus.agent.control.ShizukuStateReader
 
 enum class DeviceCapability {
@@ -47,7 +48,7 @@ data class DeviceCapabilitySnapshot(
 object DeviceCapabilityReader {
     fun read(context: Context): DeviceCapabilitySnapshot {
         val appContext = context.applicationContext
-        val shizuku = runCatching { ShizukuStateReader.read() }.getOrNull()
+        val shizuku = safeShizukuStateRead { ShizukuStateReader.read() }
         return fromStates(
             accessibilityReady = RuckusAccessibilityService.instance != null,
             writeSettingsReady = safeWriteSettingsRead { Settings.System.canWrite(appContext) },
@@ -57,8 +58,19 @@ object DeviceCapabilityReader {
         )
     }
 
+    internal fun safeShizukuStateRead(read: () -> ShizukuState): ShizukuState? =
+        try {
+            read()
+        } catch (_: RuntimeException) {
+            null
+        }
+
     internal fun safeWriteSettingsRead(read: () -> Boolean): Boolean =
-        runCatching(read).getOrDefault(false)
+        try {
+            read()
+        } catch (_: RuntimeException) {
+            false
+        }
 
     internal fun fromStates(
         accessibilityReady: Boolean,
