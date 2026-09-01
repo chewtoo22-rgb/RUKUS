@@ -40,16 +40,29 @@ class RukusSettingsController(
      * Completes onboarding only after the release-critical readiness contract passes.
      * Optional capabilities remain visible in the returned plan but do not strand unsupported
      * devices; individual commands still fail closed when those capabilities are required.
+     *
+     * A durable-storage failure is reported as a persistence blocker instead of escaping into the
+     * Android click handler. The in-memory state remains unchanged because update() only publishes
+     * after save() succeeds.
      */
     fun completeOnboardingIfReady(
         readiness: OnboardingReadiness,
         introSeen: Boolean = true
     ): OnboardingPlan {
         val plan = OnboardingReadinessPolicy.evaluate(readiness, introSeen)
-        if (plan.canComplete) {
+        if (!plan.canComplete) return plan
+
+        return try {
             update { it.completeOnboarding(currentTutorialVersion) }
+            plan
+        } catch (_: RuntimeException) {
+            OnboardingPlan(
+                currentStep = OnboardingStep.PERSISTENCE,
+                requiredBlockers = listOf(OnboardingStep.PERSISTENCE),
+                optionalSetup = plan.optionalSetup,
+                canComplete = false
+            )
         }
-        return plan
     }
 
     private inline fun update(transform: (RukusSettings) -> RukusSettings): RukusSettings {

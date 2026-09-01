@@ -19,6 +19,7 @@ enum class OnboardingStep {
     WRITE_SETTINGS,
     SHIZUKU,
     SAFETY,
+    PERSISTENCE,
     READY
 }
 
