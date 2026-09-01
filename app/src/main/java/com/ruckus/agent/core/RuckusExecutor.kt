@@ -267,7 +267,13 @@ class RuckusExecutor(context:Context){
         return observation.screen
     }
 
-    private fun setState(state:AgentTaskState){ AgentTaskStateStore.set(state); sessions.save(state,activePlanFingerprint) }
+    private fun setState(state:AgentTaskState) {
+        DurableCheckpointPublisher.publish(
+            state = state,
+            persist = { sessions.save(it, activePlanFingerprint) },
+            publishInMemory = AgentTaskStateStore::set
+        )
+    }
 
     private fun failEarly(request:String,why:String,total:Int):ExecutionReport {
         ActionAudit.record(request,null,"REJECTED: $why")
