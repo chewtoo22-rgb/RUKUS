@@ -9,7 +9,7 @@ class SharedPreferencesRukusSettingsStore(context: Context) : RukusSettingsStore
         Context.MODE_PRIVATE
     )
 
-    override fun load(): RukusSettings = StoredSettingsDecoder.decode(prefs.all)
+    override fun load(): RukusSettings = SafeStoredSettingsRead.load { prefs.all }
 
     override fun save(settings: RukusSettings) {
         val committed = prefs.edit()
