@@ -90,7 +90,9 @@ class DeviceController(private val context: Context) {
             context.packageManager.queryIntentActivities(launcherQuery, 0)
         }.mapNotNull { info ->
             val packageName = info.activityInfo?.packageName?.trim().orEmpty()
-            val label = runCatching { info.loadLabel(context.packageManager).toString().trim() }.getOrDefault("")
+            val label = AndroidQueryPolicy.readOrDefault("") {
+                info.loadLabel(context.packageManager).toString().trim()
+            }
             if (packageName.isBlank() || label.isBlank()) null
             else AppLaunchMatchPolicy.Candidate(packageName, label)
         }
@@ -98,12 +100,16 @@ class DeviceController(private val context: Context) {
             .map { candidate ->
                 "app[package=${escapeObservation(candidate.packageName)};label=${escapeObservation(candidate.label)}]"
             }
-        val brightness = runCatching {
+        val brightness = AndroidQueryPolicy.readOrDefault(-1) {
             Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
-        }.getOrDefault(-1)
+        }
         val audio = context.getSystemService(AudioManager::class.java)
-        val media = runCatching { audio.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(-1)
-        val mediaMax = runCatching { audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(-1)
+        val media = AndroidQueryPolicy.readOrDefault(-1) {
+            audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+        }
+        val mediaMax = AndroidQueryPolicy.readOrDefault(-1) {
+            audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        }
         val deviceState = "state[brightness=$brightness;media=$media;mediaMax=$mediaMax]"
         val body = (listOf(deviceState) + nodes + apps).joinToString(" • ")
         return "pkg=$pkg | $body"
