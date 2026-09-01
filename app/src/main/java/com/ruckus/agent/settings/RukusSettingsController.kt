@@ -21,17 +21,17 @@ class RukusSettingsController(
     fun needsOnboarding(): Boolean = current.needsOnboarding(currentTutorialVersion)
 
     fun setTelemetryEnabled(enabled: Boolean): RukusSettings {
-        val next = update { it.copy(telemetryEnabled = enabled) }
+        val next = updateOrCurrent { it.copy(telemetryEnabled = enabled) }
         ExecutionHealthTelemetry.setEnabled(next.telemetryEnabled)
         return next
     }
 
-    fun setHapticsEnabled(enabled: Boolean): RukusSettings = update {
+    fun setHapticsEnabled(enabled: Boolean): RukusSettings = updateOrCurrent {
         it.copy(hapticsEnabled = enabled)
     }
 
     fun setConfirmationsEnabled(enabled: Boolean): RukusSettings {
-        val next = update { it.copy(confirmationsEnabled = enabled) }
+        val next = updateOrCurrent { it.copy(confirmationsEnabled = enabled) }
         ConfirmationRuntimePolicy.setPromptsEnabled(next.confirmationsEnabled)
         return next
     }
@@ -64,6 +64,18 @@ class RukusSettingsController(
             )
         }
     }
+
+    /**
+     * Settings toggles are user-facing controls, so transient Android persistence failures must not
+     * escape into Compose handlers. Preserve the previous durable/in-memory snapshot and return it.
+     * Fatal Error conditions are intentionally not swallowed.
+     */
+    private inline fun updateOrCurrent(transform: (RukusSettings) -> RukusSettings): RukusSettings =
+        try {
+            update(transform)
+        } catch (_: RuntimeException) {
+            current
+        }
 
     private inline fun update(transform: (RukusSettings) -> RukusSettings): RukusSettings {
         val next = transform(current)

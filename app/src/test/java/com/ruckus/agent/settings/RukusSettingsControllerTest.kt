@@ -125,27 +125,52 @@ class RukusSettingsControllerTest {
     }
 
     @Test
-    fun failedPersistenceDoesNotAdvanceInMemoryOrRuntimeTelemetryState() {
+    fun failedTelemetryPersistenceReturnsPreviousStateWithoutChangingRuntime() {
         val store = FakeStore(failWrites = true)
         val controller = RukusSettingsController(store)
         val before = controller.snapshot()
         assertTrue(ExecutionHealthTelemetry.isEnabled())
-        runCatching { controller.setTelemetryEnabled(false) }
+
+        val returned = controller.setTelemetryEnabled(false)
+
+        assertEquals(before, returned)
         assertEquals(before, controller.snapshot())
         assertEquals(before, store.persisted)
         assertTrue(ExecutionHealthTelemetry.isEnabled())
     }
 
     @Test
-    fun failedPersistenceDoesNotAdvanceRuntimeConfirmationState() {
+    fun failedConfirmationPersistenceReturnsPreviousStateWithoutChangingRuntime() {
         val store = FakeStore(failWrites = true)
         val controller = RukusSettingsController(store)
         val before = controller.snapshot()
         assertTrue(ConfirmationRuntimePolicy.promptsEnabled())
-        runCatching { controller.setConfirmationsEnabled(false) }
+
+        val returned = controller.setConfirmationsEnabled(false)
+
+        assertEquals(before, returned)
         assertEquals(before, controller.snapshot())
         assertEquals(before, store.persisted)
         assertTrue(ConfirmationRuntimePolicy.promptsEnabled())
+    }
+
+    @Test
+    fun failedHapticsPersistenceReturnsPreviousState() {
+        val store = FakeStore(failWrites = true)
+        val controller = RukusSettingsController(store)
+        val before = controller.snapshot()
+
+        val returned = controller.setHapticsEnabled(false)
+
+        assertEquals(before, returned)
+        assertEquals(before, controller.snapshot())
+        assertEquals(before, store.persisted)
+    }
+
+    @Test(expected = AssertionError::class)
+    fun fatalSettingsPersistenceErrorStillPropagates() {
+        val controller = RukusSettingsController(FatalStore())
+        controller.setHapticsEnabled(false)
     }
 
     @Test
@@ -186,6 +211,13 @@ class RukusSettingsControllerTest {
             saveCount++
             if (failWrites) error("simulated storage failure")
             persisted = settings
+        }
+    }
+
+    private class FatalStore : RukusSettingsStore {
+        override fun load(): RukusSettings = RukusSettings()
+        override fun save(settings: RukusSettings) {
+            throw AssertionError("fatal simulated failure")
         }
     }
 }
