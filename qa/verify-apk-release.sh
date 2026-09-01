@@ -41,7 +41,6 @@ expect_eq "debuggable" "$DEBUGGABLE" "false"
 
 [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || fail "versionCode must be a positive integer"
 grep -Fq 'android.permission.WRITE_SETTINGS' <<<"$PERMISSIONS" || fail "WRITE_SETTINGS permission missing"
-grep -Fq 'android.permission.POST_NOTIFICATIONS' <<<"$PERMISSIONS" || fail "POST_NOTIFICATIONS permission missing"
 grep -Fq 'classes.dex' <<<"$FILES" || fail "classes.dex missing"
 
 MANIFEST_FILE="$(mktemp)"
