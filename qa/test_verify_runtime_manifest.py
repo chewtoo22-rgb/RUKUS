@@ -39,6 +39,11 @@ class RuntimeManifestContractTest(unittest.TestCase):
     def test_valid_manifest_passes(self):
         validate_manifest(BASE)
 
+    def test_apkanalyzer_numeric_signature_protection_passes(self):
+        validate_manifest(
+            BASE.replace('android:protectionLevel="signature"', 'android:protectionLevel="0x2"')
+        )
+
     def test_unexpected_requested_permission_fails_closed(self):
         extra = '<uses-permission android:name="android.permission.INTERNET" />'
         self.assertRejected(
