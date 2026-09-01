@@ -4,6 +4,10 @@ import unittest
 from verify_runtime_manifest import validate_manifest
 
 BASE = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.ruckus.agent">
+  <permission android:name="com.ruckus.agent.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" android:protectionLevel="signature" />
+  <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+  <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+  <uses-permission android:name="com.ruckus.agent.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
   <application>
     <provider android:name="rikka.shizuku.ShizukuProvider" android:authorities="com.ruckus.agent.shizuku" android:exported="true" android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     <service android:name="com.ruckus.agent.control.RuckusAccessibilityService" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="false">
@@ -34,6 +38,55 @@ class RuntimeManifestContractTest(unittest.TestCase):
 
     def test_valid_manifest_passes(self):
         validate_manifest(BASE)
+
+    def test_apkanalyzer_numeric_signature_protection_passes(self):
+        validate_manifest(
+            BASE.replace('android:protectionLevel="signature"', 'android:protectionLevel="0x2"')
+        )
+
+    def test_unexpected_requested_permission_fails_closed(self):
+        extra = '<uses-permission android:name="android.permission.INTERNET" />'
+        self.assertRejected(
+            BASE.replace('<application>', extra + '<application>'),
+            "unexpected requested permission set",
+        )
+
+    def test_required_write_settings_permission_cannot_disappear(self):
+        self.assertRejected(
+            BASE.replace('<uses-permission android:name="android.permission.WRITE_SETTINGS" />', ''),
+            "unexpected requested permission set",
+        )
+
+    def test_required_shizuku_permission_cannot_disappear(self):
+        self.assertRejected(
+            BASE.replace('<uses-permission android:name="moe.shizuku.manager.permission.API_V23" />', ''),
+            "unexpected requested permission set",
+        )
+
+    def test_dynamic_receiver_permission_request_cannot_disappear(self):
+        self.assertRejected(
+            BASE.replace('<uses-permission android:name="com.ruckus.agent.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />', ''),
+            "unexpected requested permission set",
+        )
+
+    def test_dynamic_receiver_permission_must_be_declared(self):
+        self.assertRejected(
+            BASE.replace('<permission android:name="com.ruckus.agent.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" android:protectionLevel="signature" />', ''),
+            "dynamic receiver permission declaration must appear exactly once",
+        )
+
+    def test_dynamic_receiver_permission_must_remain_signature_protected(self):
+        self.assertRejected(
+            BASE.replace('android:protectionLevel="signature"', 'android:protectionLevel="normal"'),
+            "must remain signature-protected",
+        )
+
+    def test_legacy_sdk23_permission_alias_is_still_part_of_allowlist(self):
+        manifest = BASE.replace(
+            '<uses-permission android:name="android.permission.WRITE_SETTINGS" />',
+            '<uses-permission-sdk-23 android:name="android.permission.WRITE_SETTINGS" />',
+        )
+        validate_manifest(manifest)
 
     def test_packaged_qualified_accessibility_resource_passes(self):
         validate_manifest(BASE.replace(
