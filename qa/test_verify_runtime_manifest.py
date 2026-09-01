@@ -4,6 +4,7 @@ import unittest
 from verify_runtime_manifest import validate_manifest
 
 BASE = '''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.ruckus.agent">
+  <uses-permission android:name="android.permission.WRITE_SETTINGS" />
   <application>
     <provider android:name="rikka.shizuku.ShizukuProvider" android:authorities="com.ruckus.agent.shizuku" android:exported="true" android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     <service android:name="com.ruckus.agent.control.RuckusAccessibilityService" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="false">
@@ -34,6 +35,26 @@ class RuntimeManifestContractTest(unittest.TestCase):
 
     def test_valid_manifest_passes(self):
         validate_manifest(BASE)
+
+    def test_unexpected_requested_permission_fails_closed(self):
+        extra = '<uses-permission android:name="android.permission.INTERNET" />'
+        self.assertRejected(
+            BASE.replace('<application>', extra + '<application>'),
+            "unexpected requested permission set",
+        )
+
+    def test_required_write_settings_permission_cannot_disappear(self):
+        self.assertRejected(
+            BASE.replace('<uses-permission android:name="android.permission.WRITE_SETTINGS" />', ''),
+            "unexpected requested permission set",
+        )
+
+    def test_legacy_sdk23_permission_alias_is_still_part_of_allowlist(self):
+        manifest = BASE.replace(
+            '<uses-permission android:name="android.permission.WRITE_SETTINGS" />',
+            '<uses-permission-sdk-23 android:name="android.permission.WRITE_SETTINGS" />',
+        )
+        validate_manifest(manifest)
 
     def test_packaged_qualified_accessibility_resource_passes(self):
         validate_manifest(BASE.replace(
