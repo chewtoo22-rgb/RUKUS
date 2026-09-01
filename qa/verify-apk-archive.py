@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import stat
 import sys
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -36,8 +37,40 @@ def _safe_name(raw_name: str) -> str:
     return canonical
 
 
+def _reject_unsafe_member_type(info: zipfile.ZipInfo, name: str) -> None:
+    """Reject Unix symlink/device/socket members while allowing normal files/dirs."""
+    if info.create_system != 3:
+        return
+
+    mode = (info.external_attr >> 16) & 0xFFFF
+    file_type = stat.S_IFMT(mode)
+    if file_type in {0, stat.S_IFREG, stat.S_IFDIR}:
+        return
+
+    if file_type == stat.S_IFLNK:
+        kind = "symlink"
+    elif file_type == stat.S_IFCHR:
+        kind = "character device"
+    elif file_type == stat.S_IFBLK:
+        kind = "block device"
+    elif file_type == stat.S_IFIFO:
+        kind = "fifo"
+    elif file_type == stat.S_IFSOCK:
+        kind = "socket"
+    else:
+        kind = "special file"
+    raise ArchiveValidationError(f"unsafe {kind} archive entry: {name!r}")
+
+
 def validate_apk(path: Path) -> tuple[int, int]:
-    if not path.is_file():
+    try:
+        path_mode = path.lstat().st_mode
+    except FileNotFoundError as exc:
+        raise ArchiveValidationError(f"APK is not a regular file: {path}") from exc
+
+    if stat.S_ISLNK(path_mode):
+        raise ArchiveValidationError(f"APK path must not be a symlink: {path}")
+    if not stat.S_ISREG(path_mode):
         raise ArchiveValidationError(f"APK is not a regular file: {path}")
 
     try:
@@ -57,6 +90,8 @@ def validate_apk(path: Path) -> tuple[int, int]:
                 if name in seen:
                     raise ArchiveValidationError(f"duplicate archive entry: {name!r}")
                 seen.add(name)
+
+                _reject_unsafe_member_type(info, name)
 
                 if info.flag_bits & 0x1:
                     raise ArchiveValidationError(f"encrypted archive entry: {name!r}")
