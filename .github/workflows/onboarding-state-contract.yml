@@ -21,6 +21,18 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
       - name: Run onboarding state regressions
-        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests 'com.ruckus.agent.onboarding.OnboardingStateTest'
+        run: gradle :app:testDebugUnitTest --tests 'com.ruckus.agent.onboarding.OnboardingStateTest' --stacktrace
+      - name: Enforce reducer isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          file='app/src/main/java/com/ruckus/agent/onboarding/OnboardingState.kt'
+          ! grep -Eq 'android\.|androidx\.|ProcessBuilder|Runtime\.getRuntime|Shizuku|AccessibilityService' "$file"
+          grep -F 'OnboardingStep.Permissions' "$file"
+          grep -F 'OnboardingStep.Safety' "$file"
+          grep -F 'OnboardingStep.TryCommand' "$file"
