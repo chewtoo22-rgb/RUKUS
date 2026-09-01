@@ -11,11 +11,17 @@ class AndroidQueryPolicyTest {
 
     @Test
     fun `security failure degrades to empty diagnostic inventory`() {
-        assertEquals(emptyList<String>(), AndroidQueryPolicy.readOrEmpty { throw SecurityException("hidden") })
+        assertEquals(
+            emptyList<String>(),
+            AndroidQueryPolicy.readOrEmpty<String> { throw SecurityException("hidden") },
+        )
     }
 
     @Test
     fun `runtime platform failure degrades to empty diagnostic inventory`() {
-        assertEquals(emptyList<String>(), AndroidQueryPolicy.readOrEmpty { throw IllegalStateException("pm unavailable") })
+        assertEquals(
+            emptyList<String>(),
+            AndroidQueryPolicy.readOrEmpty<String> { throw IllegalStateException("pm unavailable") },
+        )
     }
 }
