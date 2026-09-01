@@ -11,6 +11,8 @@ APP_ID = "com.ruckus.agent"
 ACCESSIBILITY_SERVICE = f"{APP_ID}.control.RuckusAccessibilityService"
 MAIN_ACTIVITY = f"{APP_ID}.MainActivity"
 SHIZUKU_PROVIDER = "rikka.shizuku.ShizukuProvider"
+SHIZUKU_API_PERMISSION = "moe.shizuku.manager.permission.API_V23"
+DYNAMIC_RECEIVER_PERMISSION = f"{APP_ID}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
 PROFILE_INSTALL_RECEIVER = "androidx.profileinstaller.ProfileInstallReceiver"
 PROFILE_INSTALL_PERMISSION = "android.permission.DUMP"
 PROFILE_INSTALL_ACTIONS = {
@@ -21,6 +23,8 @@ PROFILE_INSTALL_ACTIONS = {
 }
 EXPECTED_REQUESTED_PERMISSIONS = {
     "android.permission.WRITE_SETTINGS",
+    SHIZUKU_API_PERMISSION,
+    DYNAMIC_RECEIVER_PERMISSION,
 }
 RESOURCE_ID = re.compile(r"^@(?:ref/)?(?:0x)?[0-9a-fA-F]+$")
 ACCESSIBILITY_RESOURCE = re.compile(
@@ -92,6 +96,22 @@ def valid_accessibility_resource(value):
     )
 
 
+def validate_dynamic_receiver_permission(root):
+    matches = [
+        node
+        for node in root.findall("permission")
+        if attr(node, "name") == DYNAMIC_RECEIVER_PERMISSION
+    ]
+    require(
+        len(matches) == 1,
+        "AndroidX dynamic receiver permission declaration must appear exactly once",
+    )
+    require(
+        attr(matches[0], "protectionLevel") == "signature",
+        "AndroidX dynamic receiver permission must remain signature-protected",
+    )
+
+
 def validate_profile_install_receiver(application):
     matches = [
         node
@@ -144,6 +164,7 @@ def validate_manifest(xml_text):
         requested_permissions == EXPECTED_REQUESTED_PERMISSIONS,
         "unexpected requested permission set: " + ", ".join(sorted(requested_permissions)),
     )
+    validate_dynamic_receiver_permission(root)
 
     apps = root.findall("application")
     require(len(apps) == 1, f"expected exactly one application, found {len(apps)}")
