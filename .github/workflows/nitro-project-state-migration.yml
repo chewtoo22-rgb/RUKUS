@@ -1,0 +1,45 @@
+name: NITRO Project State Migration
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/ruckus/agent/builder/NitroProjectStateMigration.kt'
+      - 'app/src/test/java/com/ruckus/agent/builder/NitroProjectStateMigrationTest.kt'
+      - 'app/src/main/java/com/ruckus/agent/builder/ProjectSpec.kt'
+      - '.github/workflows/nitro-project-state-migration.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'app/src/main/java/com/ruckus/agent/builder/NitroProjectStateMigration.kt'
+      - 'app/src/test/java/com/ruckus/agent/builder/NitroProjectStateMigrationTest.kt'
+      - 'app/src/main/java/com/ruckus/agent/builder/ProjectSpec.kt'
+      - '.github/workflows/nitro-project-state-migration.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  nitro-project-state-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Run focused migration regressions
+        run: gradle :app:testDebugUnitTest --tests 'com.ruckus.agent.builder.NitroProjectStateMigrationTest' --stacktrace
+      - name: Enforce pure migration boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          file='app/src/main/java/com/ruckus/agent/builder/NitroProjectStateMigration.kt'
+          ! grep -Eq 'android\.|androidx\.|ProcessBuilder|Runtime\.getRuntime|java\.io|java\.nio|HttpURLConnection|Socket|exec\(' "$file"
+          grep -F 'CURRENT_SCHEMA = 2' "$file"
+          grep -F 'PRODUCT_NITRO = "nitro"' "$file"
+          grep -F 'unsupported project schema' "$file"
