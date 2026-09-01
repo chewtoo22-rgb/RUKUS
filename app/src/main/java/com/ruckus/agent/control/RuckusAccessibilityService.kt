@@ -2,15 +2,33 @@ package com.ruckus.agent.control
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.Intent
 import android.graphics.Path
 import android.view.accessibility.AccessibilityEvent
 import com.ruckus.agent.core.AgentAction
 
 class RuckusAccessibilityService : AccessibilityService() {
-    companion object { @Volatile var instance: RuckusAccessibilityService? = null }
+    companion object {
+        private val registry = ActiveInstanceRegistry<RuckusAccessibilityService>()
+        val instance: RuckusAccessibilityService?
+            get() = registry.current()
+    }
 
-    override fun onServiceConnected() { super.onServiceConnected(); instance = this }
-    override fun onDestroy() { instance = null; super.onDestroy() }
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        registry.register(this)
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        registry.unregister(this)
+        return super.onUnbind(intent)
+    }
+
+    override fun onDestroy() {
+        registry.unregister(this)
+        super.onDestroy()
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
     override fun onInterrupt() = Unit
 
