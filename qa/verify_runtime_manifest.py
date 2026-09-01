@@ -19,6 +19,9 @@ PROFILE_INSTALL_ACTIONS = {
     "androidx.profileinstaller.action.SAVE_PROFILE",
     "androidx.profileinstaller.action.BENCHMARK_OPERATION",
 }
+EXPECTED_REQUESTED_PERMISSIONS = {
+    "android.permission.WRITE_SETTINGS",
+}
 RESOURCE_ID = re.compile(r"^@(?:ref/)?(?:0x)?[0-9a-fA-F]+$")
 ACCESSIBILITY_RESOURCE = re.compile(
     r"^@(?:(?:com\.ruckus\.agent):)?xml/ruckus_accessibility_service$"
@@ -130,6 +133,17 @@ def validate_manifest(xml_text):
             package_name == APP_ID,
             f"manifest package must be {APP_ID}, got {package_name}",
         )
+
+    requested_permissions = {
+        attr(node, "name")
+        for tag in ("uses-permission", "uses-permission-sdk-23")
+        for node in root.findall(tag)
+        if attr(node, "name")
+    }
+    require(
+        requested_permissions == EXPECTED_REQUESTED_PERMISSIONS,
+        "unexpected requested permission set: " + ", ".join(sorted(requested_permissions)),
+    )
 
     apps = root.findall("application")
     require(len(apps) == 1, f"expected exactly one application, found {len(apps)}")
