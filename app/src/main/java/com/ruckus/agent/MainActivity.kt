@@ -268,13 +268,14 @@ private fun Dashboard(
         if (isExecuting) return
         isExecuting = true
         executionScope.launch {
-            val report = try {
-                withContext(Dispatchers.IO) { block() }
-            } catch (failure: Throwable) {
-                ExecutionReport(false, failure.message ?: "Command execution failed")
+            try {
+                val report = ExecutionUiBoundary.run {
+                    withContext(Dispatchers.IO) { block() }
+                }
+                show(report)
+            } finally {
+                isExecuting = false
             }
-            show(report)
-            isExecuting = false
         }
     }
 
