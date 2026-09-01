@@ -1,0 +1,43 @@
+name: RUKUS Telemetry Event Admission
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/ruckus/agent/telemetry/TelemetryEventAdmission.kt'
+      - 'app/src/test/java/com/ruckus/agent/telemetry/TelemetryEventAdmissionTest.kt'
+      - '.github/workflows/telemetry-event-admission.yml'
+  push:
+    branches: [ build/executor-v1 ]
+    paths:
+      - 'app/src/main/java/com/ruckus/agent/telemetry/TelemetryEventAdmission.kt'
+      - 'app/src/test/java/com/ruckus/agent/telemetry/TelemetryEventAdmissionTest.kt'
+      - '.github/workflows/telemetry-event-admission.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  telemetry-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Run focused telemetry regressions
+        run: gradle :app:testDebugUnitTest --tests 'com.ruckus.agent.telemetry.TelemetryEventAdmissionTest' --stacktrace
+      - name: Enforce privacy and non-transport boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          file='app/src/main/java/com/ruckus/agent/telemetry/TelemetryEventAdmission.kt'
+          ! grep -Eq 'android\.|androidx\.|java\.net|okhttp|retrofit|HttpURLConnection|Socket|ProcessBuilder|Runtime\.getRuntime|java\.io|java\.nio\.file' "$file"
+          grep -F 'MAX_ATTRIBUTES = 12' "$file"
+          grep -F 'forbiddenKeyFragments' "$file"
+          grep -F 'sensitive attribute category' "$file"
