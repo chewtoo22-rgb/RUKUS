@@ -3,6 +3,7 @@
 from pathlib import Path
 import sys
 
+MIGRATION_PATH = Path("app/src/main/java/com/ruckus/agent/builder/NitroProjectStateMigration.kt")
 REQUIRED_MARKERS = (
     "schemaVersion",
     "PRODUCT_NITRO",
@@ -17,25 +18,19 @@ FORBIDDEN_MARKERS = (
 
 
 def main() -> int:
-    candidates = [
-        Path("app/src/main/java"),
-        Path("app/src/test/java"),
-    ]
-    files = [p for root in candidates if root.exists() for p in root.rglob("*.kt")]
-    migration_files = [p for p in files if "Migration" in p.name or "migration" in p.name.lower()]
-    if not migration_files:
-        print("NITRO migration contract: no migration source found", file=sys.stderr)
+    if not MIGRATION_PATH.is_file():
+        print(f"NITRO migration contract: missing migration source: {MIGRATION_PATH}", file=sys.stderr)
         return 1
-    text = "\n".join(p.read_text(encoding="utf-8") for p in migration_files)
-    missing = [m for m in REQUIRED_MARKERS if m not in text]
+    text = MIGRATION_PATH.read_text(encoding="utf-8")
+    missing = [marker for marker in REQUIRED_MARKERS if marker not in text]
     if missing:
         print(f"NITRO migration contract: missing markers: {', '.join(missing)}", file=sys.stderr)
         return 1
-    forbidden = [m for m in FORBIDDEN_MARKERS if m in text]
+    forbidden = [marker for marker in FORBIDDEN_MARKERS if marker in text]
     if forbidden:
         print(f"NITRO migration contract: forbidden coupling: {', '.join(forbidden)}", file=sys.stderr)
         return 1
-    print(f"NITRO migration contract: PASS ({len(migration_files)} migration files scanned)")
+    print(f"NITRO migration contract: PASS ({MIGRATION_PATH})")
     return 0
 
 
