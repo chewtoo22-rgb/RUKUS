@@ -1,0 +1,23 @@
+name: RUKUS APK release artifact contract
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/apk-release-gate.yml'
+      - 'qa/validate_apk_release_artifact_contract.py'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apk-release-gate.yml'
+      - 'qa/validate_apk_release_artifact_contract.py'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate APK release artifact contract
+        run: python3 qa/validate_apk_release_artifact_contract.py
