@@ -4,6 +4,7 @@ object CommandParser {
     data class Parsed(val action: AgentAction?, val confidence: Float, val explanation: String)
 
     private const val OPEN_PACKAGE_PREFIX = "open package "
+    private const val OPEN_PACKAGE_COMMAND = "open package"
 
     fun parse(raw: String): Parsed {
         val clean = raw.trim()
@@ -13,6 +14,7 @@ object CommandParser {
         return when {
             q == "go home" || q == "home" -> Parsed(AgentAction.Home, .99f, "Go home")
             q == "go back" || q == "back" -> Parsed(AgentAction.Back, .99f, "Go back")
+            q == OPEN_PACKAGE_COMMAND -> Parsed(null, .1f, "Missing Android package identifier")
             q.startsWith(OPEN_PACKAGE_PREFIX) -> parseExactPackage(clean)
             q.startsWith("open ") -> Parsed(AgentAction.OpenAppByName(clean.substringAfter(" ").trim()), .95f, "Launch app by visible name")
             q == "scroll down" || q == "swipe up" -> Parsed(AgentAction.Scroll(AgentAction.Direction.DOWN), .97f, "Scroll content down")
