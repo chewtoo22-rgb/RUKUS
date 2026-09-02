@@ -29,4 +29,9 @@ class RecoverableAndroidCallTest {
     fun fatalErrorPropagates() {
         runCatching<Int> { throw AssertionError("fatal") }
     }
+
+    @Test(expected = LinkageError::class)
+    fun linkageErrorsPropagate() {
+        runCatching<Int> { throw LinkageError("missing Android binding") }
+    }
 }
