@@ -58,6 +58,12 @@ class NitroHandoffValidatorTest(unittest.TestCase):
         self.assertRejected(apk_path="../app.apk")
         self.assertRejected(apk_path="outputs\\app-debug.apk")
 
+    def test_rejects_duplicate_manifest_keys(self):
+        duplicate = json.dumps(self.base)[:-1] + ',"producer":"MUTINY"}'
+        self.manifest.write_text(duplicate, encoding="utf-8")
+        with self.assertRaisesRegex(ValidationError, "duplicate manifest field: producer"):
+            validate(self.manifest, self.root)
+
     def test_rejects_symlink_apk(self):
         target = self.root / "real.apk"
         target.write_bytes(self.apk.read_bytes())
