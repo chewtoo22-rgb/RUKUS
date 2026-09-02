@@ -5,8 +5,7 @@ import sys
 
 REQUIRED_MARKERS = (
     "schemaVersion",
-    "NITRO",
-    "nitro_projects",
+    "PRODUCT_NITRO",
     "rukus",
 )
 FORBIDDEN_MARKERS = (
