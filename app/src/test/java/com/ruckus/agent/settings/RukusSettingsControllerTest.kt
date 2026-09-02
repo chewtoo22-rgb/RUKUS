@@ -64,6 +64,12 @@ class RukusSettingsControllerTest {
         assertEquals(1, store.saveCount)
     }
 
+    @Test(expected = AssertionError::class)
+    fun fatalOnboardingPersistenceErrorStillPropagates() {
+        val controller = RukusSettingsController(FatalStore())
+        controller.completeOnboardingIfReady(ready())
+    }
+
     @Test
     fun readinessGateRefusesPersistenceWithoutAccessibility() {
         val store = FakeStore()
