@@ -1,8 +1,8 @@
 package com.ruckus.agent.telemetry
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Test
 
 class TelemetryEventBoundaryTest {
     @Test
@@ -18,7 +18,7 @@ class TelemetryEventBoundaryTest {
 
     @Test
     fun rejects_negative_timestamp() {
-        assertFailsWith<IllegalArgumentException> {
+        assertThrows(IllegalArgumentException::class.java) {
             TelemetryEventBoundary.sanitize(
                 TelemetryEvent(TelemetryEvent.Name.COMMAND_STARTED, -1),
             )
@@ -27,7 +27,7 @@ class TelemetryEventBoundaryTest {
 
     @Test
     fun rejects_oversized_attribute_value() {
-        assertFailsWith<IllegalArgumentException> {
+        assertThrows(IllegalArgumentException::class.java) {
             TelemetryEventBoundary.sanitize(
                 TelemetryEvent(
                     name = TelemetryEvent.Name.SETTING_CHANGED,
@@ -43,7 +43,7 @@ class TelemetryEventBoundaryTest {
         val attributes = (0..TelemetryEventBoundary.MAX_ATTRIBUTE_COUNT)
             .associate { "key_$it" to "value" }
 
-        assertFailsWith<IllegalArgumentException> {
+        assertThrows(IllegalArgumentException::class.java) {
             TelemetryEventBoundary.sanitize(
                 TelemetryEvent(TelemetryEvent.Name.PERMISSION_CHECKED, 1, attributes),
             )
