@@ -58,7 +58,7 @@ class TaskSessionStore(context: Context) {
 
     fun load(): PersistedTaskSession? {
         val raw = SafePreferenceRead.stringOrNull { prefs.getString(KEY, null) } ?: return null
-        return runCatching {
+        return CheckpointDecodeBoundary.decodeOrNull {
             val json = JSONObject(raw)
             val session = PersistedTaskSession(
                 request = json.optString("request"),
@@ -79,7 +79,7 @@ class TaskSessionStore(context: Context) {
             if (!integrity.allowed) {
                 // Durable storage is not trusted execution authority. Refuse malformed,
                 // impossible, partial, legacy, or corrupted checkpoints before resume.
-                return@runCatching null
+                return@decodeOrNull null
             }
 
             val resumeLease = SessionResumeLeasePolicy.evaluate(
@@ -89,7 +89,7 @@ class TaskSessionStore(context: Context) {
             if (!resumeLease.allowed) {
                 // A crash checkpoint is only evidence for a short-lived resume window. Beyond that
                 // the phone/environment may have changed, so force a fresh task and observation.
-                return@runCatching null
+                return@decodeOrNull null
             }
 
             if (
@@ -102,7 +102,7 @@ class TaskSessionStore(context: Context) {
             } else {
                 session
             }
-        }.getOrNull()
+        }
     }
 
     fun clear() {
