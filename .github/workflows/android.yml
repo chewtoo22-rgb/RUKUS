@@ -51,6 +51,8 @@ jobs:
           path: app/build/reports/lint-results-debug.*
       - name: Build APK
         run: gradle :app:assembleDebug --stacktrace
+      - name: Verify installable debug APK contract
+        run: bash qa/verify-installable-apk.sh app/build/outputs/apk/debug/app-debug.apk
       - name: Build instrumentation test APK
         run: gradle :app:assembleDebugAndroidTest --stacktrace
       - name: Record exact APK provenance
