@@ -36,6 +36,12 @@ class NitroProjectStateMigrationTest {
         assertEquals(once.state, twice.state)
     }
 
+    @Test fun currentStateCanonicalizesCaseAndOuterWhitespace() {
+        val result = NitroProjectStateMigration.migrate(state(schema = 2, product = "  NITRO  "))
+        assertFalse(result.migrated)
+        assertEquals("nitro", result.state.product)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsFutureSchema() = Unit.also {
         NitroProjectStateMigration.migrate(state(schema = 3, product = "nitro"))
