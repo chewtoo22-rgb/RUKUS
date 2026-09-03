@@ -1,0 +1,74 @@
+name: Android Backup Safety
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/AndroidManifest.xml'
+      - '.github/workflows/android-backup-safety.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'app/src/main/AndroidManifest.xml'
+      - '.github/workflows/android-backup-safety.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  manifest-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate device-control manifest safety contract
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          manifest = ET.parse('app/src/main/AndroidManifest.xml').getroot()
+          ns = '{http://schemas.android.com/apk/res/android}'
+          app = manifest.find('application')
+          if app is None:
+              raise SystemExit('missing <application>')
+          if app.get(ns + 'allowBackup') != 'false':
+              raise SystemExit('device-control app must set android:allowBackup="false"')
+
+          service = None
+          for node in app.findall('service'):
+              if node.get(ns + 'name') == '.control.RuckusAccessibilityService':
+                  service = node
+                  break
+          if service is None:
+              raise SystemExit('missing RuckusAccessibilityService declaration')
+          if service.get(ns + 'permission') != 'android.permission.BIND_ACCESSIBILITY_SERVICE':
+              raise SystemExit('accessibility service lost BIND_ACCESSIBILITY_SERVICE guard')
+          if service.get(ns + 'exported') != 'false':
+              raise SystemExit('accessibility service must remain non-exported')
+
+          provider = None
+          for node in app.findall('provider'):
+              if node.get(ns + 'name') == 'rikka.shizuku.ShizukuProvider':
+                  provider = node
+                  break
+          if provider is None:
+              raise SystemExit('missing ShizukuProvider declaration')
+          if provider.get(ns + 'permission') != 'android.permission.INTERACT_ACROSS_USERS_FULL':
+              raise SystemExit('ShizukuProvider permission contract changed')
+          if provider.get(ns + 'authorities') != '${applicationId}.shizuku':
+              raise SystemExit('ShizukuProvider authority contract changed')
+
+          print('Android device-control manifest safety contract: PASS')
+          PY
+      - name: Run app JVM tests
+        run: gradle :app:testDebugUnitTest --stacktrace
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --stacktrace
