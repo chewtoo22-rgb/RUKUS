@@ -1,0 +1,28 @@
+name: NITRO Manifest Identity Contract
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/AndroidManifest.xml'
+      - 'qa/validate_nitro_manifest_identity.py'
+      - '.github/workflows/nitro-manifest-identity-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/src/main/AndroidManifest.xml'
+      - 'qa/validate_nitro_manifest_identity.py'
+      - '.github/workflows/nitro-manifest-identity-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate shipped manifest identity
+        run: python qa/validate_nitro_manifest_identity.py
