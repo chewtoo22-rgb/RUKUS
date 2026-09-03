@@ -4,7 +4,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="RUCKUS"
+        android:label="NITRO"
         android:theme="@style/Theme.Ruckus">
 
         <provider
