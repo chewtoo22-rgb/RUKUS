@@ -15,12 +15,14 @@ enum class AgentLifecycleState {
     EXECUTING,
     VERIFYING,
     RECOVERING,
+    CANCELLING,
     SUCCEEDED,
+    CANCELLED,
     BLOCKED,
     FAILED;
 
     val isTerminal: Boolean
-        get() = this == SUCCEEDED || this == BLOCKED || this == FAILED
+        get() = this == SUCCEEDED || this == CANCELLED || this == BLOCKED || this == FAILED
 
     val isActive: Boolean
         get() = this != IDLE && !isTerminal
@@ -38,6 +40,9 @@ enum class AgentLifecycleEvent {
     VERIFICATION_FAILED,
     RECOVERY_READY,
     RECOVERY_EXHAUSTED,
+    CANCEL_REQUESTED,
+    CANCELLATION_COMPLETE,
+    CANCELLATION_FAILED,
     TERMINAL_ACKNOWLEDGED,
 }
 
@@ -58,6 +63,7 @@ object AgentLifecycleReducer {
 
         AgentLifecycleState.UNDERSTANDING -> when (event) {
             AgentLifecycleEvent.UNDERSTANDING_COMPLETE -> AgentLifecycleState.PLANNING
+            AgentLifecycleEvent.CANCEL_REQUESTED -> AgentLifecycleState.CANCELLED
             else -> illegal(state, event)
         }
 
@@ -65,34 +71,46 @@ object AgentLifecycleReducer {
             AgentLifecycleEvent.PLAN_READY -> AgentLifecycleState.EXECUTING
             AgentLifecycleEvent.CONFIRMATION_REQUIRED -> AgentLifecycleState.AWAITING_CONFIRMATION
             AgentLifecycleEvent.PREFLIGHT_BLOCKED -> AgentLifecycleState.BLOCKED
+            AgentLifecycleEvent.CANCEL_REQUESTED -> AgentLifecycleState.CANCELLED
             else -> illegal(state, event)
         }
 
         AgentLifecycleState.AWAITING_CONFIRMATION -> when (event) {
             AgentLifecycleEvent.CONFIRMED -> AgentLifecycleState.EXECUTING
             AgentLifecycleEvent.PREFLIGHT_BLOCKED -> AgentLifecycleState.BLOCKED
+            AgentLifecycleEvent.CANCEL_REQUESTED -> AgentLifecycleState.CANCELLED
             else -> illegal(state, event)
         }
 
         AgentLifecycleState.EXECUTING -> when (event) {
             AgentLifecycleEvent.ACTIONS_COMPLETE -> AgentLifecycleState.VERIFYING
             AgentLifecycleEvent.PREFLIGHT_BLOCKED -> AgentLifecycleState.BLOCKED
+            AgentLifecycleEvent.CANCEL_REQUESTED -> AgentLifecycleState.CANCELLING
             else -> illegal(state, event)
         }
 
         AgentLifecycleState.VERIFYING -> when (event) {
             AgentLifecycleEvent.VERIFICATION_PASSED -> AgentLifecycleState.SUCCEEDED
             AgentLifecycleEvent.VERIFICATION_FAILED -> AgentLifecycleState.RECOVERING
+            AgentLifecycleEvent.CANCEL_REQUESTED -> AgentLifecycleState.CANCELLING
             else -> illegal(state, event)
         }
 
         AgentLifecycleState.RECOVERING -> when (event) {
             AgentLifecycleEvent.RECOVERY_READY -> AgentLifecycleState.EXECUTING
             AgentLifecycleEvent.RECOVERY_EXHAUSTED -> AgentLifecycleState.FAILED
+            AgentLifecycleEvent.CANCEL_REQUESTED -> AgentLifecycleState.CANCELLING
+            else -> illegal(state, event)
+        }
+
+        AgentLifecycleState.CANCELLING -> when (event) {
+            AgentLifecycleEvent.CANCELLATION_COMPLETE -> AgentLifecycleState.CANCELLED
+            AgentLifecycleEvent.CANCELLATION_FAILED -> AgentLifecycleState.FAILED
             else -> illegal(state, event)
         }
 
         AgentLifecycleState.SUCCEEDED,
+        AgentLifecycleState.CANCELLED,
         AgentLifecycleState.BLOCKED,
         AgentLifecycleState.FAILED -> when (event) {
             AgentLifecycleEvent.TERMINAL_ACKNOWLEDGED -> AgentLifecycleState.IDLE
