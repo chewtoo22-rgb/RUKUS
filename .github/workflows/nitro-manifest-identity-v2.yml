@@ -1,0 +1,30 @@
+name: NITRO Manifest Identity v2
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/src/main/res/values/themes.xml'
+      - 'qa/validate_nitro_manifest_identity.py'
+      - '.github/workflows/nitro-manifest-identity-v2.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/src/main/res/values/themes.xml'
+      - 'qa/validate_nitro_manifest_identity.py'
+      - '.github/workflows/nitro-manifest-identity-v2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate NITRO manifest identity
+        run: python qa/validate_nitro_manifest_identity.py
