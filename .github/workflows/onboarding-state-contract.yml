@@ -1,0 +1,38 @@
+name: Onboarding State Contract
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/ruckus/agent/onboarding/**'
+      - 'app/src/test/java/com/ruckus/agent/onboarding/**'
+      - '.github/workflows/onboarding-state-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  onboarding-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Run onboarding state regressions
+        run: gradle :app:testDebugUnitTest --tests 'com.ruckus.agent.onboarding.OnboardingStateTest' --stacktrace
+      - name: Enforce reducer isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          file='app/src/main/java/com/ruckus/agent/onboarding/OnboardingState.kt'
+          ! grep -Eq 'android\.|androidx\.|ProcessBuilder|Runtime\.getRuntime|Shizuku|AccessibilityService' "$file"
+          grep -F 'OnboardingStep.Permissions' "$file"
+          grep -F 'OnboardingStep.Safety' "$file"
+          grep -F 'OnboardingStep.TryCommand' "$file"
