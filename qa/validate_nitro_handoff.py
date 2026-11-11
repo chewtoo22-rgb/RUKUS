@@ -31,6 +31,15 @@ class ValidationError(ValueError):
     pass
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValidationError(f"duplicate manifest field: {key}")
+        result[key] = value
+    return result
+
+
 def _load_manifest(path: Path) -> dict:
     if path.is_symlink():
         raise ValidationError("manifest must not be a symlink")
@@ -43,7 +52,9 @@ def _load_manifest(path: Path) -> dict:
     if path.stat().st_size > 16 * 1024:
         raise ValidationError("manifest exceeds 16 KiB")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_keys)
+    except ValidationError:
+        raise
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ValidationError(f"invalid manifest JSON: {exc}") from exc
     if not isinstance(data, dict):
