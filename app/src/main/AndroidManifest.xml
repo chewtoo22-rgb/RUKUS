@@ -4,8 +4,8 @@
 
     <application
         android:allowBackup="true"
-        android:label="RUCKUS"
-        android:theme="@style/Theme.Ruckus">
+        android:label="NITRO"
+        android:theme="@style/Theme.Nitro">
 
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
