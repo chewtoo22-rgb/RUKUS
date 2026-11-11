@@ -43,3 +43,6 @@ jobs:
           grep -F 'IllegalAgentLifecycleTransition' "$file"
           grep -F 'TERMINAL_ACKNOWLEDGED' "$file"
           grep -F 'CONFIRMATION_REQUIRED' "$file"
+          grep -F 'CANCEL_REQUESTED' "$file"
+          grep -F 'CANCELLATION_COMPLETE' "$file"
+          grep -F 'CANCELLATION_FAILED' "$file"
