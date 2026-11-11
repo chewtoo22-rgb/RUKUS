@@ -6,14 +6,17 @@ package com.ruckus.agent.builder
  * never directly execute model-supplied shell text on the phone.
  */
 class BuilderEngine {
-    fun plan(spec: ProjectSpec): List<String> = buildList {
-        add("Create ${spec.kind} project: ${spec.name}")
-        add("Generate package ${spec.packageName}")
-        add("Generate architecture and UI skeleton")
-        spec.features.forEach { add("Implement feature: $it") }
-        add("Run static checks")
-        add("Build debug APK")
-        add("Install/test through Device Agent")
-        add("Collect failures and patch")
+    fun plan(spec: ProjectSpec): List<String> {
+        val admitted = NitroProjectAdmission.admit(spec)
+        return buildList {
+            add("Create ${admitted.kind} project: ${admitted.name}")
+            add("Generate package ${admitted.packageName}")
+            add("Generate architecture and UI skeleton")
+            admitted.features.forEach { add("Implement feature: $it") }
+            add("Run static checks")
+            add("Build debug APK")
+            add("Install/test through Device Agent")
+            add("Collect failures and patch")
+        }
     }
 }
