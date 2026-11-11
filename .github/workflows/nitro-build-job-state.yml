@@ -1,0 +1,37 @@
+name: NITRO Build Job State Contract
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/ruckus/agent/builder/NitroBuildJobState.kt'
+      - 'app/src/test/java/com/ruckus/agent/builder/NitroBuildJobStateTest.kt'
+      - '.github/workflows/nitro-build-job-state.yml'
+  push:
+    paths:
+      - 'app/src/main/java/com/ruckus/agent/builder/NitroBuildJobState.kt'
+      - 'app/src/test/java/com/ruckus/agent/builder/NitroBuildJobStateTest.kt'
+      - '.github/workflows/nitro-build-job-state.yml'
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Provision Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Run focused build-job regressions
+        run: gradle :app:testDebugUnitTest --tests com.ruckus.agent.builder.NitroBuildJobStateTest
+      - name: Enforce pure state boundary
+        shell: bash
+        run: |
+          file=app/src/main/java/com/ruckus/agent/builder/NitroBuildJobState.kt
+          if grep -En 'android\.|java\.io|java\.net|ProcessBuilder|Runtime\.getRuntime|exec\(|Socket|Http|File\(' "$file"; then
+            echo 'Build-job state contract acquired an execution, Android, filesystem, or network dependency.' >&2
+            exit 1
+          fi
