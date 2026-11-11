@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import stat
 import tempfile
 import unittest
 import warnings
@@ -41,6 +42,34 @@ class ApkArchiveValidationTests(unittest.TestCase):
         count, total = module.validate_apk(path)
         self.assertEqual(count, 3)
         self.assertGreater(total, 0)
+
+    def test_rejects_symlinked_apk_input(self) -> None:
+        target = self.make_apk(self.valid_entries())
+        link = target.with_name(target.name + ".link.apk")
+        link.symlink_to(target)
+        self.addCleanup(link.unlink, missing_ok=True)
+        with self.assertRaisesRegex(module.ArchiveValidationError, "must not be a symlink"):
+            module.validate_apk(link)
+
+    def test_rejects_symlink_member(self) -> None:
+        path = self.make_apk(self.valid_entries())
+        with zipfile.ZipFile(path, "a") as archive:
+            info = zipfile.ZipInfo("assets/current")
+            info.create_system = 3
+            info.external_attr = (stat.S_IFLNK | 0o777) << 16
+            archive.writestr(info, b"../outside")
+        with self.assertRaisesRegex(module.ArchiveValidationError, "unsafe symlink"):
+            module.validate_apk(path)
+
+    def test_rejects_fifo_member(self) -> None:
+        path = self.make_apk(self.valid_entries())
+        with zipfile.ZipFile(path, "a") as archive:
+            info = zipfile.ZipInfo("assets/channel")
+            info.create_system = 3
+            info.external_attr = (stat.S_IFIFO | 0o600) << 16
+            archive.writestr(info, b"")
+        with self.assertRaisesRegex(module.ArchiveValidationError, "unsafe fifo"):
+            module.validate_apk(path)
 
     def test_rejects_duplicate_entry(self) -> None:
         path = self.make_apk(self.valid_entries() + [("classes.dex", b"shadow")])
