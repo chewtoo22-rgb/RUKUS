@@ -50,10 +50,13 @@ object NitroProjectStateMigration {
                 )
             }
             CURRENT_SCHEMA -> {
-                require(input.product == PRODUCT_NITRO) {
+                require(input.product.trim().equals(PRODUCT_NITRO, ignoreCase = true)) {
                     "schema v2 must use nitro product identity"
                 }
-                MigrationResult(normalized, migrated = false)
+                MigrationResult(
+                    state = normalized.copy(product = PRODUCT_NITRO),
+                    migrated = false
+                )
             }
             else -> error("unreachable schema")
         }
